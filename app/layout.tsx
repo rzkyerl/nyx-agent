@@ -1,40 +1,25 @@
-import { Geist, Geist_Mono } from "next/font/google"
+import type { Metadata } from 'next'
+import { Geist, Geist_Mono } from 'next/font/google'
+import { cn } from '@/lib/utils'
+import './globals.css'
+import './chat.css'
 
-import "./globals.css"
-import { SiteHeader } from "@/components/site-header"
-import { ThemeProvider } from "@/components/theme-provider"
-import { cn } from "@/lib/utils"
+const fontSans = Geist({ subsets: ['latin'], variable: '--font-sans' })
+const fontMono = Geist_Mono({ subsets: ['latin'], variable: '--font-mono' })
 
-const fontSans = Geist({ subsets: ["latin"], variable: "--font-sans" })
+export const metadata: Metadata = {
+  title:       'Nyx Agent',
+  description: 'AI assistant by CTRL Build',
+  icons: {
+    icon: '/images/nyx-agent/icon-mark-tab.png',
+  },
+}
 
-const fontMono = Geist_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-})
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html
-      lang="en"
-      suppressHydrationWarning
-      className={cn(
-        "antialiased",
-        fontMono.variable,
-        "font-sans",
-        fontSans.variable
-      )}
-    >
-      <body>
-        <ThemeProvider>
-          <div className="flex h-svh flex-col">
-            <SiteHeader />
-            {children}
-          </div>
-        </ThemeProvider>
+    <html lang="en" suppressHydrationWarning className={cn(fontSans.variable, fontMono.variable, 'antialiased')}>
+      <body className="bg-background text-foreground">
+        {children}
       </body>
     </html>
   )

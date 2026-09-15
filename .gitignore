@@ -28,12 +28,37 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# env files — hanya .env.example yang boleh masuk ke git
+.env
+.env.*
 !.env.example
 
-# claude code
+# secrets & credentials
+*.key
+*.p12
+*.pfx
+*.cert
+*.crt
+secrets/
+credentials/
+service-account*.json
+
+# kiro & claude local settings
 .claude/settings.local.json
+.kiro/settings/mcp.json
+
+# logs
+logs/
+*.log
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# editor directories
+.vscode/
+.idea/
 
 # typescript
 *.tsbuildinfo
