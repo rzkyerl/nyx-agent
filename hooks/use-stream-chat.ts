@@ -8,6 +8,7 @@
 import type { SourceItem } from '@/lib/storage'
 import type { InstalledSkill } from '@/lib/skills'
 import type { CustomProvider } from '@/lib/storage'
+import { buildSystemPrompt } from '@/lib/system-prompt'
 
 interface StreamChatParams {
   messages:            Array<{ role: string; content: unknown }>
@@ -46,7 +47,7 @@ export async function streamChatCompletion(params: StreamChatParams): Promise<st
     ? customBaseUrl
     : `${customBaseUrl}${customBaseUrl.endsWith('/v1') ? '/chat/completions' : '/v1/chat/completions'}`
   const requestMessages = directConnection
-    ? [{ role: 'system', content: 'You are Nyx Agent, a helpful AI assistant. Use Markdown and answer concisely.' }, ...messages]
+    ? [{ role: 'system', content: buildSystemPrompt(customModelId, customProvider?.name || 'Custom Provider') }, ...messages]
     : messages
   const response = await fetch(directConnection ? customEndpoint : '/api/chat', {
     method: 'POST',

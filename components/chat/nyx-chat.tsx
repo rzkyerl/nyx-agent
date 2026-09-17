@@ -5,7 +5,7 @@
    Wires: useChatSession + useStreamChat + all sub-components
 ═══════════════════════════════════════════════════ */
 
-import { useState, useCallback, useRef, useEffect } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { Menu, Trash2, ChevronDown, Share2, FileText, Pin, Edit3 } from 'lucide-react'
 import { Sidebar }       from './sidebar'
 import { ChatArea }      from './chat-area'
@@ -45,7 +45,7 @@ export function NyxChat() {
   const [searchDone, setSearchDone]       = useState(false)
   const [searchQuery, setSearchQuery]     = useState('')
   const [haluWarningMsgId, setHaluWarningMsgId] = useState<string | null>(null)
-  const [customProviders, setCustomProviders] = useState<CustomProvider[]>([])
+  const [customProviders, setCustomProviders] = useState<CustomProvider[]>(() => loadCustomProviders())
 
   const titleMenuRef      = useRef<HTMLDivElement>(null)
   const titleInputRef     = useRef<HTMLInputElement>(null)
@@ -54,11 +54,6 @@ export function NyxChat() {
 
   useEffect(() => { sessionsRef.current = sessions }, [sessions])
   useEffect(() => { activeSessionRef.current = activeSession }, [activeSession])
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => setCustomProviders(loadCustomProviders()))
-    return () => cancelAnimationFrame(frame)
-  }, [])
-
   useEffect(() => {
     if (editingTitle) {
       titleInputRef.current?.focus()
@@ -83,14 +78,14 @@ export function NyxChat() {
   }, [])
 
   const messages       = activeSession?.messages || []
-  const customModels: NyxModel[] = customProviders.flatMap(provider => provider.models.map(model => ({
+  const customModels = useMemo<NyxModel[]>(() => customProviders.flatMap(provider => provider.models.map(model => ({
     id: `custom/${provider.id}/${encodeURIComponent(model.id)}`,
     label: model.label,
     vendor: provider.name,
     description: model.description || `Custom model via ${provider.baseUrl}`,
     tags: ['Custom'],
-  })))
-  const availableModels = [...NIM_MODELS, ...customModels]
+  }))), [customProviders])
+  const availableModels = useMemo(() => [...NIM_MODELS, ...customModels], [customModels])
   const selectedModelId = settings.selectedModel || NIM_MODELS[0].id
   const selectedModel = availableModels.find(model => model.id === selectedModelId)
   const hasGeneratedDocument = messages.some(message => message.role === 'assistant' && Boolean(parseExportConfig(message.content)))
@@ -165,13 +160,13 @@ export function NyxChat() {
       const resp = await fetch('/api/title', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: conversationSummary, sessionId }),
+        body: JSON.stringify({ message: conversationSummary, sessionId, model: selectedModelId, customProviders }),
       })
       if (!resp.ok) return null
       const data = await resp.json()
       return (data.title as string) || null
     } catch { return null }
-  }, [])
+  }, [customProviders, selectedModelId])
 
   /* ── New chat ── */
   const handleNewChat = useCallback(() => {

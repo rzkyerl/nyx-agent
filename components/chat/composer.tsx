@@ -499,11 +499,15 @@ export function Composer({
                     <span className="text-[11px] text-muted-foreground">Ctrl+U</span>
                   </button>
                   <div className="relative" onMouseEnter={() => setSkillsMenuOpen(true)} onMouseLeave={() => setSkillsMenuOpen(false)}>
-                    <button className="flex min-h-10 w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-foreground hover:bg-muted">
-                      <Blocks size={15} className="shrink-0 text-muted-foreground" /><span className="flex-1">Skills</span><ChevronRight size={14} />
+                    <button
+                      type="button"
+                      onClick={() => setSkillsMenuOpen(open => !open)}
+                      className="flex min-h-10 w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
+                    >
+                      <Blocks size={15} className="shrink-0 text-muted-foreground" /><span className="flex-1">Skills</span><ChevronRight size={14} className="hidden sm:block" /><ChevronDown size={14} className="sm:hidden" />
                     </button>
                     {skillsMenuOpen && (
-                      <div className="absolute bottom-0 left-full z-50 ml-1 w-56 rounded-xl border border-border bg-popover p-1.5 shadow-lg">
+                      <div className="absolute bottom-[calc(100%+0.25rem)] right-0 z-50 max-h-[min(60vh,20rem)] w-56 max-w-[calc(100vw-2rem)] overflow-y-auto rounded-xl border border-border bg-popover p-1.5 shadow-xl sm:bottom-0 sm:left-full sm:right-auto sm:ml-1">
                         {installedSkills.length > 0 ? installedSkills.map(skill => (
                           <button key={skill.id} onClick={() => setSkillsMenuOpen(false)} className="flex min-h-9 w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-left text-sm text-foreground hover:bg-muted">
                             <WandSparkles size={14} className="text-muted-foreground" /><span className="min-w-0 truncate">{skill.name}</span>
@@ -665,25 +669,25 @@ export function Composer({
       )}
 
       {manageModelsOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setManageModelsOpen(false)}>
-          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-border bg-background shadow-2xl" onClick={event => event.stopPropagation()}>
-            <div className="flex items-start justify-between border-b border-border px-5 py-4">
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50 p-2 sm:items-center sm:p-4" onClick={() => setManageModelsOpen(false)}>
+          <div className="flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl sm:max-h-[min(86vh,48rem)]" onClick={event => event.stopPropagation()}>
+            <div className="flex shrink-0 items-start justify-between border-b border-border px-4 py-3.5 sm:px-5 sm:py-4">
               <div>
                 <h2 className="text-base font-semibold text-foreground">Manage Models</h2>
-                <p className="mt-1 text-xs text-muted-foreground">Check which models are ready to use with your configured providers.</p>
+                <p className="mt-1 max-w-[19rem] text-xs leading-4 text-muted-foreground">Check which models are ready to use with your configured providers.</p>
               </div>
               <button onClick={() => setManageModelsOpen(false)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground" aria-label="Close manage models">
                 <X size={17} />
               </button>
             </div>
-            <div className="model-list-scrollbar max-h-[min(68vh,34rem)] overflow-y-auto p-5">
-              <div className="space-y-2">
+            <div className="model-list-scrollbar min-h-0 flex-1 overflow-y-auto p-3 sm:p-5">
+              <div className="space-y-2.5">
                 {models.map(model => {
                   const health = modelHealth[model.id]
                   const status = health?.status
                   return (
-                    <div key={model.id} className="flex items-center gap-3 rounded-xl border border-border px-3 py-3">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><CircleDashed size={16} /></span>
+                    <div key={model.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2.5 rounded-xl border border-border px-2.5 py-2.5 sm:flex sm:gap-3 sm:px-3 sm:py-3">
+                      <span className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground sm:flex"><CircleDashed size={16} /></span>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2">
                           <p className="truncate text-sm font-medium text-foreground">{model.label}</p>
@@ -691,17 +695,24 @@ export function Composer({
                           <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{model.vendor}</span>
                         </div>
                         <p className="mt-0.5 truncate text-xs text-muted-foreground">{model.description}{model.vendor === 'Ollama' && ' Available when the developer Ollama server is running.'}</p>
+                        <div className="mt-1 flex items-center gap-2 sm:hidden">
+                          {health?.latencyMs && <span className="text-[10px] text-muted-foreground">{health.latencyMs} ms</span>}
+                          <span className={cn('flex items-center gap-1 text-[10px] font-medium', status === 'ready' ? 'text-emerald-600 dark:text-emerald-400' : status === 'unavailable' ? 'text-destructive' : status === 'not-configured' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>
+                            {status === 'ready' ? <CircleCheck size={13} /> : status === 'unavailable' ? <CircleX size={13} /> : <CircleDashed size={13} />}
+                            {status === 'ready' ? 'Ready' : status === 'unavailable' ? 'Unavailable' : status === 'not-configured' ? 'Not configured' : 'Not checked'}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        {health?.latencyMs && <span className="text-[11px] text-muted-foreground">{health.latencyMs} ms</span>}
-                        <span className={cn('flex items-center gap-1 text-[11px] font-medium', status === 'ready' ? 'text-emerald-600 dark:text-emerald-400' : status === 'unavailable' ? 'text-destructive' : status === 'not-configured' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>
+                      <div className="col-span-1 flex shrink-0 items-center justify-end gap-1.5 sm:ml-auto sm:gap-2">
+                        <span className="hidden text-[10px] text-muted-foreground sm:inline sm:text-[11px]">{health?.latencyMs ? `${health.latencyMs} ms` : ''}</span>
+                        <span className={cn('hidden items-center gap-1 text-[10px] font-medium sm:flex sm:text-[11px]', status === 'ready' ? 'text-emerald-600 dark:text-emerald-400' : status === 'unavailable' ? 'text-destructive' : status === 'not-configured' ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground')}>
                           {status === 'ready' ? <CircleCheck size={14} /> : status === 'unavailable' ? <CircleX size={14} /> : <CircleDashed size={14} />}
                           {status === 'ready' ? 'Ready' : status === 'unavailable' ? 'Unavailable' : status === 'not-configured' ? 'Not configured' : 'Not checked'}
                         </span>
                         <button onClick={() => void checkModel(model.id)} disabled={checkingModels || checkingModelIds.includes(model.id)} className="rounded-lg p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:cursor-wait disabled:opacity-50" title={`Check ${model.label}`} aria-label={`Check ${model.label}`}>
                           <RefreshCw size={13} className={checkingModelIds.includes(model.id) ? 'animate-spin' : ''} />
                         </button>
-                        <button onClick={() => { onSelectModel?.(model.id); setManageModelsOpen(false) }} className="rounded-lg bg-muted px-2.5 py-1.5 text-[11px] font-medium text-foreground hover:bg-border">Use</button>
+                        <button onClick={() => { onSelectModel?.(model.id); setManageModelsOpen(false) }} className="rounded-lg bg-muted px-2.5 py-1.5 text-[10px] font-medium text-foreground hover:bg-border sm:text-[11px]">Use</button>
                       </div>
                     </div>
                   )
@@ -775,9 +786,9 @@ export function Composer({
                 </div>
               )}
             </div>
-            <div className="flex items-center justify-between border-t border-border px-5 py-3">
-              <p className="text-[11px] text-muted-foreground">Health checks run securely through the server.</p>
-              <button onClick={checkModels} disabled={checkingModels} className="flex items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50">
+            <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-4 py-3 sm:px-5">
+              <p className="max-w-[12rem] text-[10px] leading-4 text-muted-foreground sm:max-w-none sm:text-[11px]">Health checks run securely through the server.</p>
+              <button onClick={checkModels} disabled={checkingModels} className="flex shrink-0 items-center gap-2 rounded-lg bg-foreground px-3 py-2 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-50">
                 <RefreshCw size={13} className={checkingModels ? 'animate-spin' : ''} />
                 {checkingModels ? 'Checking...' : 'Check all models'}
               </button>

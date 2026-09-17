@@ -75,7 +75,9 @@ PART 2 — At the very end of your response, append an export block using EXACTL
 {
   "type": "pdf" | "docx" | "xlsx",
   "title": "<document title>",
-  "filename": "<suggested-filename-no-extension>"
+  "filename": "<suggested-filename-no-extension>",
+  "template": "auto" | "academic" | "formal" | "informal",
+  "font": "auto" | "Inter" | "Lora" | "Playfair Display" | "Merriweather" | "Roboto" | "Open Sans" | "Montserrat" | "Source Sans 3"
 }
 \`\`\`
 
@@ -83,6 +85,8 @@ Rules for choosing type:
 - "pdf"  → for reports, essays, letters, proposals, summaries, any prose document
 - "docx" → only when user explicitly asks for Word / .docx format
 - "xlsx" → for tables, spreadsheets, data with rows and columns
+- "template" → choose "academic" for research papers/theses, "formal" for official reports/proposals/contracts/letters, and "informal" for casual notes or simple readable documents. Use "auto" only when the style is genuinely ambiguous.
+- "font" → choose a supported Google Font only when the user requests a font or when it clearly fits the requested style. Use "Lora" for academic documents, "Source Sans 3" for formal documents, and "Inter" for informal documents when no font was requested. Use "auto" when uncertain. If the user requests an unsupported or premium font, use the closest supported font.
 
 IMPORTANT:
 - Include the export-config block ONLY when the user explicitly requests a file to be created/generated/built.

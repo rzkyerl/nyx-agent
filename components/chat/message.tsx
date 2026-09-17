@@ -6,7 +6,7 @@
 ═══════════════════════════════════════════════════ */
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { Copy, RefreshCw, Check, ThumbsUp, ThumbsDown, Share2, FileDown, X, PanelRightClose, PanelRightOpen, GripVertical, Pencil } from 'lucide-react'
+import { Copy, RefreshCw, Check, ThumbsUp, ThumbsDown, Share2, FileDown, X, PanelRightClose, PanelRightOpen, GripVertical, Pencil, ChevronDown } from 'lucide-react'
 import { MarkdownRenderer } from './markdown-renderer'
 import { SourcesPanel }     from './sources-panel'
 import { parseSources }     from '@/lib/parse-sources'
@@ -19,6 +19,8 @@ import {
   extractExportContent,
   useExportFile,
   type ExportConfig,
+  type ExportFont,
+  type ExportTemplate,
 } from '@/hooks/use-export-file'
 
 interface MessageProps {
@@ -51,6 +53,8 @@ export function Message({
   const [editing, setEditing]         = useState(false)
   const [editValue, setEditValue]     = useState(message.content)
   const [shareOpen, setShareOpen]     = useState(false)
+  const [selectedTemplate, setSelectedTemplate] = useState<ExportTemplate>('auto')
+  const [selectedFont, setSelectedFont] = useState<ExportFont>('auto')
   const thinkingTimerRef                = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const isUser  = message.role === 'user'
@@ -63,6 +67,15 @@ export function Message({
     if (!isAI || isStreaming) return null
     return parseExportConfig(message.content || '')
   }, [isAI, isStreaming, message.content])
+
+  useEffect(() => {
+    if (exportConfig) {
+      setSelectedTemplate(exportConfig.template)
+      setSelectedFont(exportConfig.font)
+    }
+  }, [exportConfig])
+
+  const activeExportConfig = exportConfig ? { ...exportConfig, template: selectedTemplate, font: selectedFont } : null
 
   // Rendered content strips the export-config fence so it doesn't show as a code block
   const renderedContent = useMemo(() => {
@@ -78,19 +91,19 @@ export function Message({
   const handleExport = useCallback(() => {
     if (!exportConfig) return
     const content = extractExportContent(message.content || '')
-    exportFile(exportConfig, content)
-  }, [exportConfig, message.content, exportFile])
+    exportFile(activeExportConfig!, content)
+  }, [activeExportConfig, message.content, exportFile])
 
   const openPreview = useCallback(async () => {
     if (!exportConfig) return
     try {
-      await previewFile(exportConfig, extractExportContent(message.content || ''))
+      await previewFile(activeExportConfig!, extractExportContent(message.content || ''))
       setPreviewOpen(true)
       window.dispatchEvent(new CustomEvent('nyx-preview-change', { detail: { open: true, width: previewWidth } }))
     } catch {
       // The download card still exposes the normal retry path.
     }
-  }, [exportConfig, message.content, previewFile, previewWidth])
+  }, [activeExportConfig, message.content, previewFile, previewWidth])
 
   const closePreview = useCallback(() => {
     setPreviewOpen(false)
@@ -242,37 +255,68 @@ export function Message({
 
         {/* Generated document download card */}
         {isAI && exportConfig && !isStreaming && (
-          <div className="flex w-full max-w-md items-center gap-3 rounded-xl border border-border bg-muted/40 px-3 py-2.5">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <FileDown size={17} />
+          <div className="grid w-full max-w-xl grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-3 rounded-2xl border border-border bg-muted/40 p-3 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-background text-primary shadow-sm ring-1 ring-border/60">
+              <FileDown size={18} strokeWidth={1.8} />
             </div>
             <button
               type="button"
               onClick={openPreview}
-              className="min-w-0 flex-1 text-left"
+              className="min-w-0 text-left sm:flex-1"
               title="Preview document"
             >
-              <p className="truncate text-xs font-medium text-foreground" title={exportConfig.title}>
+              <p className="truncate text-[13px] font-semibold leading-5 text-foreground" title={exportConfig.title}>
                 {exportConfig.title}
               </p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                Document · {exportConfig.type.toUpperCase()}
+              <p className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                {exportConfig.type} document
               </p>
             </button>
-            <button
-              type="button"
-              onClick={handleExport}
-              disabled={exportLoading}
-              className="shrink-0 rounded-md bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-secondary/80 disabled:cursor-wait disabled:opacity-60"
-            >
-              {exportLoading ? 'Generating…' : exportDone ? 'Downloaded' : exportError ? 'Retry' : 'Download'}
-            </button>
+            <div className="col-span-2 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 sm:col-span-1 sm:ml-auto sm:flex sm:flex-nowrap">
+              {exportConfig.type === 'pdf' && <DocumentSelect
+                value={selectedTemplate}
+                onChange={value => setSelectedTemplate(value as ExportTemplate)}
+                label="Template"
+                options={[
+                  { value: 'auto', label: 'Auto' },
+                  { value: 'academic', label: 'Academic' },
+                  { value: 'formal', label: 'Formal' },
+                  { value: 'informal', label: 'Informal' },
+                ]}
+                className="sm:w-28"
+              />}
+              {exportConfig.type === 'pdf' && <DocumentSelect
+                value={selectedFont}
+                onChange={value => setSelectedFont(value as ExportFont)}
+                label="Font"
+                options={[
+                  { value: 'auto', label: 'Auto' },
+                  { value: 'Inter', label: 'Inter' },
+                  { value: 'Lora', label: 'Lora' },
+                  { value: 'Playfair Display', label: 'Playfair' },
+                  { value: 'Merriweather', label: 'Merriweather' },
+                  { value: 'Roboto', label: 'Roboto' },
+                  { value: 'Open Sans', label: 'Open Sans' },
+                  { value: 'Montserrat', label: 'Montserrat' },
+                  { value: 'Source Sans 3', label: 'Source Sans 3' },
+                ]}
+                className="sm:w-32"
+              />}
+              <button
+                type="button"
+                onClick={handleExport}
+                disabled={exportLoading}
+                className="h-9 shrink-0 rounded-lg bg-foreground px-3.5 text-xs font-semibold text-background transition-opacity hover:opacity-85 disabled:cursor-wait disabled:opacity-60"
+              >
+                {exportLoading ? 'Generating…' : exportDone ? 'Downloaded' : exportError ? 'Retry' : 'Download'}
+              </button>
+            </div>
           </div>
         )}
 
         {previewOpen && exportConfig && (
           <DocumentPreview
-            config={exportConfig}
+            config={activeExportConfig!}
             previewUrl={previewUrl}
             width={previewWidth}
             onWidthChange={setPreviewWidth}
@@ -354,6 +398,90 @@ export function Message({
   )
 }
 
+function DocumentSelect({
+  value, onChange, label, options, className = '',
+}: {
+  value: string
+  onChange: (value: string) => void
+  label: string
+  options: Array<{ value: string; label: string }>
+  className?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const [placement, setPlacement] = useState<'up' | 'down'>('up')
+  const containerRef = useRef<HTMLDivElement>(null)
+  const selected = options.find(option => option.value === value) || options[0]
+
+  const toggleOpen = () => {
+    if (!open && containerRef.current) {
+      const { top, bottom } = containerRef.current.getBoundingClientRect()
+      const estimatedHeight = Math.min(options.length * 36 + 8, 256)
+      const safeTop = 96
+      setPlacement(top - estimatedHeight >= safeTop ? 'up' : 'down')
+    }
+    setOpen(current => !current)
+  }
+
+  useEffect(() => {
+    if (!open) return
+    const handlePointerDown = (event: PointerEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [open])
+
+  return (
+    <div ref={containerRef} className={cn('relative min-w-0 flex-1', className)}>
+      <button
+        type="button"
+        onClick={toggleOpen}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`${label}: ${selected.label}`}
+        className={cn(
+          'flex h-9 w-full items-center justify-between gap-2 rounded-lg border bg-background px-2.5 text-left text-xs font-medium text-foreground outline-none transition-colors',
+          open ? 'border-foreground/50 ring-2 ring-ring/20' : 'border-border hover:border-foreground/30'
+        )}
+      >
+        <span className="truncate"><span className="text-muted-foreground">{label}:</span> {selected.label}</span>
+        <ChevronDown size={14} className={cn('shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
+      </button>
+      {open && <div
+        role="listbox"
+        aria-label={label}
+        className={cn(
+          'document-select-scrollbar absolute right-0 z-50 max-h-64 min-w-full overflow-y-auto overflow-x-hidden rounded-xl border border-border bg-popover p-1 text-popover-foreground shadow-xl ring-1 ring-black/5',
+          placement === 'up' ? 'bottom-[calc(100%+0.4rem)]' : 'top-[calc(100%+0.4rem)]'
+        )}
+      >
+        {options.map(option => (
+          <button
+            key={option.value}
+            type="button"
+            role="option"
+            aria-selected={option.value === value}
+            onClick={() => { onChange(option.value); setOpen(false) }}
+            className={cn(
+              'flex w-full items-center rounded-lg px-2.5 py-2 text-left text-xs transition-colors hover:bg-muted',
+              option.value === value ? 'bg-muted font-semibold text-foreground' : 'text-muted-foreground'
+            )}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>}
+    </div>
+  )
+}
+
 function DocumentPreview({
   config, previewUrl, width, onWidthChange, onClose, onDownload, isDownloading,
 }: {
@@ -420,7 +548,7 @@ function DocumentPreview({
         <div className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-4">
           {!collapsed && <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-foreground">{config.title}</p>
-            <p className="text-[11px] text-muted-foreground">Document · {config.type.toUpperCase()}</p>
+            <p className="text-[11px] text-muted-foreground">Document · {config.type.toUpperCase()} · {config.template} · {config.font}</p>
           </div>}
           {!collapsed && <button
             type="button"

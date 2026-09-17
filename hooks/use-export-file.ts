@@ -6,7 +6,9 @@
 ═══════════════════════════════════════════════════ */
 
 import { useState, useCallback, useEffect } from 'react'
-import type { ExportType } from '@/app/api/export/route'
+import type { ExportFont, ExportType } from '@/app/api/export/route'
+
+export type { ExportFont }
 
 // ── Types ──────────────────────────────────────────
 
@@ -14,7 +16,11 @@ export interface ExportConfig {
   type:      ExportType
   title:     string
   filename:  string
+  template:  ExportTemplate
+  font:      ExportFont
 }
+
+export type ExportTemplate = 'auto' | 'academic' | 'formal' | 'informal'
 
 export interface ExportState {
   loading:  boolean
@@ -40,6 +46,12 @@ export function parseExportConfig(content: string): ExportConfig | null {
       type:     raw.type,
       title:    raw.title    || 'Dokumen',
       filename: raw.filename || 'export',
+      template: raw.template && ['auto', 'academic', 'formal', 'informal'].includes(raw.template)
+        ? raw.template as ExportTemplate
+        : 'auto',
+      font: raw.font && ['auto', 'Inter', 'Lora', 'Playfair Display', 'Merriweather', 'Roboto', 'Open Sans', 'Montserrat', 'Source Sans 3'].includes(raw.font)
+        ? raw.font as ExportFont
+        : 'auto',
     }
   } catch {
     return null
@@ -78,6 +90,8 @@ export function useExportFile() {
       type: config.type,
       title: config.title,
       filename: config.filename,
+      template: config.template,
+      font: config.font,
       content,
     }
     if (rows && rows.length > 0) body.rows = rows

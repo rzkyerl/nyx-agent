@@ -66,6 +66,33 @@
   background-clip: padding-box;
 }
 
+/* ── Document dropdown scrollbar ─────────────────── */
+.document-select-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--color-border) 80%, transparent) transparent;
+  overscroll-behavior: contain;
+}
+
+.document-select-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.document-select-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.document-select-scrollbar::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--color-border) 80%, transparent);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.document-select-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted-foreground);
+  background-clip: padding-box;
+}
+
 /* ── Markdown body ────────────────────────────────── */
 .md-body {
   font-size: 0.875rem;
