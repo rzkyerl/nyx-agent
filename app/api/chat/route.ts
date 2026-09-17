@@ -71,6 +71,10 @@ function remapGeminiModel(modelId: string): string {
 
 function detectProvider(modelId: string): { provider: string; model: string } {
   if (!modelId) return { provider: 'nim', model: modelId }
+  if (modelId.startsWith('custom/')) {
+    const parts = modelId.split('/')
+    return { provider: `custom:${parts[1]}`, model: decodeURIComponent(parts.slice(2).join('/')) }
+  }
   if (modelId.startsWith('ollama/'))  return { provider: 'ollama', model: modelId.slice(7) }
   if (modelId.startsWith('groq/'))    return { provider: 'groq',   model: modelId.slice(5) }
   if (modelId.startsWith('gemini/'))  return { provider: 'gemini', model: remapGeminiModel(modelId.slice(7)) }
@@ -87,6 +91,7 @@ function getProviderUrl(provider: string): string | null {
 // ── Message types ──────────────────────────────────
 
 type ApiMessage = { role: string; content: unknown; tool_calls?: unknown[] }
+type CustomProvider = { id: string; name: string; baseUrl: string; apiKey: string; directConnection?: boolean }
 
 function extractText(content: unknown): string {
   if (typeof content === 'string') return content
@@ -120,8 +125,9 @@ function buildProviderRequest(opts: {
   nimKey: string
   groqKey: string
   geminiKey: string
+  customProvider?: CustomProvider
 }): ProviderRequest {
-  const { provider, modelId, finalMessages, maxTokens, temperature, seed, stream, nimKey, groqKey, geminiKey } = opts
+  const { provider, modelId, finalMessages, maxTokens, temperature, seed, stream, nimKey, groqKey, geminiKey, customProvider } = opts
 
   if (provider === 'gemini') {
     const sysMsg       = finalMessages.find(m => m.role === 'system')
@@ -149,20 +155,23 @@ function buildProviderRequest(opts: {
     return { url, body, headers: { 'Content-Type': 'application/json' }, apiKeyMode: 'query', apiKey: geminiKey }
   }
 
-  // OpenAI-compatible
-  const apiKey = provider === 'groq' ? groqKey : provider === 'ollama' ? '' : nimKey
+  // OpenAI-compatible providers, including custom providers.
+  const isCustom = provider.startsWith('custom:')
+  const apiKey = isCustom ? (customProvider?.apiKey || '') : provider === 'groq' ? groqKey : provider === 'ollama' ? '' : nimKey
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     'Accept':       stream ? 'text/event-stream' : 'application/json',
   }
   if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`
 
-  const body = provider === 'groq' || provider === 'ollama'
+  const body = provider === 'groq' || provider === 'ollama' || isCustom
     ? { messages: finalMessages, model: modelId, max_tokens: maxTokens, temperature, stream }
     : { messages: finalMessages, model: modelId, max_tokens: maxTokens, temperature, seed, stream }
 
   return {
-    url:        getProviderUrl(provider) || NIM_URL,
+    url:        isCustom
+      ? `${(customProvider?.baseUrl || '').replace(/\/$/, '')}${customProvider?.baseUrl?.endsWith('/chat/completions') ? '' : customProvider?.baseUrl?.endsWith('/v1') ? '/chat/completions' : '/v1/chat/completions'}`
+      : getProviderUrl(provider) || NIM_URL,
     body,
     headers,
     apiKeyMode: 'bearer',
@@ -228,7 +237,7 @@ interface ParsedStreamResult {
   totalTokens?: number
 }
 
-function parseAccumulatedSSE(accumulated: string): ParsedStreamResult {
+function parseAccumulatedSSE(accumulated: string, provider: string): ParsedStreamResult {
   let text         = ''
   let inputTokens: number | undefined
   let outputTokens: number | undefined
@@ -242,7 +251,9 @@ function parseAccumulatedSSE(accumulated: string): ParsedStreamResult {
     try {
       const j = JSON.parse(d)
       // Content delta
-      const token = j?.choices?.[0]?.delta?.content
+      const token = provider === 'gemini'
+        ? j?.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text || '').join('')
+        : j?.choices?.[0]?.delta?.content
       if (token) text += token
       // Usage — some providers send a final chunk with usage
       const u = j?.usage
@@ -266,10 +277,6 @@ export async function POST(req: NextRequest) {
   const groqKey   = process.env.GROQ_API_KEY           || ''
   const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_GEMINI_API_KEY || ''
 
-  if (!nimKey && !groqKey && !geminiKey) {
-    return Response.json({ error: 'No API keys configured.' }, { status: 500 })
-  }
-
   const body = await req.json().catch(() => ({})) as {
     messages?:    ApiMessage[]
     model?:       string
@@ -279,6 +286,9 @@ export async function POST(req: NextRequest) {
     stream?:      boolean
     sessionId?:   string
     userId?:      string
+    webSearch?:   boolean
+    skills?:      Array<{ name?: string; content?: string }>
+    customProviders?: CustomProvider[]
   }
 
   const {
@@ -290,7 +300,14 @@ export async function POST(req: NextRequest) {
     stream      = true,
     sessionId,
     userId,
+    webSearch = false,
+    skills = [],
+    customProviders = [],
   } = body
+
+  if (!nimKey && !groqKey && !geminiKey && customProviders.length === 0) {
+    return Response.json({ error: 'No API keys or custom providers configured.' }, { status: 500 })
+  }
 
   if (!messages || !Array.isArray(messages) || messages.length === 0) {
     return Response.json({ error: 'messages array is required' }, { status: 400 })
@@ -307,6 +324,7 @@ export async function POST(req: NextRequest) {
     if (m.provider === 'groq')   return !!groqKey
     if (m.provider === 'gemini') return !!geminiKey
     if (m.provider === 'ollama') return !!OLLAMA_URL
+    if (m.provider.startsWith('custom:')) return customProviders.some(provider => provider.id === m.provider.slice(7) && !provider.directConnection)
     return false
   })
 
@@ -348,6 +366,11 @@ export async function POST(req: NextRequest) {
   let searchResult: { results: unknown[]; provider: string } | null = null
 
   const hasSystem = messages.some(m => m.role === 'system')
+  const skillContext = skills
+    .filter(skill => skill?.name && skill?.content)
+    .slice(0, 10)
+    .map(skill => `\n\n[Installed Skill: ${skill.name}]\n${skill.content}\n[End Skill: ${skill.name}]`)
+    .join('')
 
   // ── Build the streaming response ──
   const encoder = new TextEncoder()
@@ -373,8 +396,8 @@ export async function POST(req: NextRequest) {
   // ── Async main logic ──
   ;(async () => {
     // Pre-search phase
-    if (hasSearch && stream && !lastUserHasFile) {
-      const fallbackQuery = detectSearchNeed(lastUserText)
+    if (hasSearch && stream && lastUserText && (!lastUserHasFile || webSearch)) {
+      const fallbackQuery = webSearch ? lastUserText.slice(0, 200) : detectSearchNeed(lastUserText)
       if (fallbackQuery) {
         searchQuery = fallbackQuery
         write(sseEvent({ type: 'searching', query: searchQuery }))
@@ -423,16 +446,27 @@ export async function POST(req: NextRequest) {
         if (didSearch && searchResult) {
           const searchContext = formatSearchContext(searchQuery!, searchResult.results as Parameters<typeof formatSearchContext>[1])
           messagesForAttempt = [
-            { ...sysPrompt, content: sysPrompt.content + '\n\n' + searchContext },
+            { ...sysPrompt, content: sysPrompt.content + skillContext + '\n\n' + searchContext },
             ...messages,
           ]
         } else {
-          messagesForAttempt = [sysPrompt, ...messages]
+          messagesForAttempt = [{ ...sysPrompt, content: sysPrompt.content + skillContext }, ...messages]
         }
       } else {
         messagesForAttempt = didSearch && searchResult
           ? buildFallbackSearchMessages(messages, searchQuery!, searchResult.results as Parameters<typeof formatSearchContext>[1])
           : messages
+        if (skillContext) {
+          const skillSystemIndex = messagesForAttempt.findIndex(message => message.role === 'system')
+          if (skillSystemIndex >= 0) {
+            messagesForAttempt = messagesForAttempt.map((message, index) => index === skillSystemIndex
+              ? { ...message, content: extractText(message.content) + skillContext }
+              : message
+            )
+          } else {
+            messagesForAttempt = [{ role: 'system', content: skillContext }, ...messagesForAttempt]
+          }
+        }
       }
 
       if (provider === 'ollama' && !OLLAMA_URL) {
@@ -447,6 +481,7 @@ export async function POST(req: NextRequest) {
         provider, modelId: tryModel, finalMessages: messagesForAttempt,
         maxTokens: max_tokens, temperature, seed, stream,
         nimKey, groqKey, geminiKey,
+        customProvider: provider.startsWith('custom:') ? customProviders.find(item => item.id === provider.slice(7)) : undefined,
       })
 
       // One generation per provider attempt — nested under the chat trace
@@ -518,7 +553,7 @@ export async function POST(req: NextRequest) {
         }
 
         // Parse output text and token usage from accumulated SSE
-        const { text: outputText, inputTokens, outputTokens, totalTokens } = parseAccumulatedSSE(accumulated)
+        const { text: outputText, inputTokens, outputTokens, totalTokens } = parseAccumulatedSSE(accumulated, provider)
 
         if (generation) {
           endGenerationSuccess(generation, outputText, { inputTokens, outputTokens, totalTokens })

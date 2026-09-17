@@ -14,7 +14,9 @@ import { SettingsPanel } from './settings-panel'
 import { useChatSession } from '@/hooks/use-chat-session'
 import { streamChatCompletion, buildApiMessages, detectHallucinationWarning } from '@/hooks/use-stream-chat'
 import { NIM_MODELS } from '@/lib/models'
-import type { ChatMessage, SourceItem } from '@/lib/storage'
+import { loadCustomProviders, type ChatMessage, type CustomProvider, type SourceItem } from '@/lib/storage'
+import type { NyxModel } from '@/lib/models'
+import type { InstalledSkill } from '@/lib/skills'
 import { parseExportConfig } from '@/hooks/use-export-file'
 import { cn } from '@/lib/utils'
 
@@ -43,6 +45,7 @@ export function NyxChat() {
   const [searchDone, setSearchDone]       = useState(false)
   const [searchQuery, setSearchQuery]     = useState('')
   const [haluWarningMsgId, setHaluWarningMsgId] = useState<string | null>(null)
+  const [customProviders, setCustomProviders] = useState<CustomProvider[]>([])
 
   const titleMenuRef      = useRef<HTMLDivElement>(null)
   const titleInputRef     = useRef<HTMLInputElement>(null)
@@ -51,6 +54,10 @@ export function NyxChat() {
 
   useEffect(() => { sessionsRef.current = sessions }, [sessions])
   useEffect(() => { activeSessionRef.current = activeSession }, [activeSession])
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => setCustomProviders(loadCustomProviders()))
+    return () => cancelAnimationFrame(frame)
+  }, [])
 
   useEffect(() => {
     if (editingTitle) {
@@ -76,8 +83,16 @@ export function NyxChat() {
   }, [])
 
   const messages       = activeSession?.messages || []
+  const customModels: NyxModel[] = customProviders.flatMap(provider => provider.models.map(model => ({
+    id: `custom/${provider.id}/${encodeURIComponent(model.id)}`,
+    label: model.label,
+    vendor: provider.name,
+    description: model.description || `Custom model via ${provider.baseUrl}`,
+    tags: ['Custom'],
+  })))
+  const availableModels = [...NIM_MODELS, ...customModels]
   const selectedModelId = settings.selectedModel || NIM_MODELS[0].id
-  const selectedModel = NIM_MODELS.find(model => model.id === selectedModelId)
+  const selectedModel = availableModels.find(model => model.id === selectedModelId)
   const hasGeneratedDocument = messages.some(message => message.role === 'assistant' && Boolean(parseExportConfig(message.content)))
   const generatedDocuments = messages
     .filter(message => message.role === 'assistant')
@@ -125,7 +140,14 @@ export function NyxChat() {
   }, [cancelHeaderRename, commitHeaderRename])
 
   // Reset menu state on session switch
-  useEffect(() => { setConfirmDelete(false); setTitleMenuOpen(false); cancelHeaderRename() }, [activeId, cancelHeaderRename])
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      setConfirmDelete(false)
+      setTitleMenuOpen(false)
+      cancelHeaderRename()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [activeId, cancelHeaderRename])
 
   // Close conv menu on outside click
   useEffect(() => {
@@ -178,6 +200,7 @@ export function NyxChat() {
     text: string,
     files?: ChatMessage['files'],
     priorMessagesOverride?: ChatMessage[],
+    options: { webSearch: boolean; skills: InstalledSkill[] } = { webSearch: false, skills: [] },
   ) => {
     if (!text.trim() && (!files || files.length === 0)) return
 
@@ -210,6 +233,9 @@ export function NyxChat() {
         maxTokens:   2048,
         temperature: 0.2,
         sessionId:   sessionId,
+        customProviders,
+        webSearch:   options.webSearch,
+        skills:      options.skills,
         signal:      controller.signal,
         onToken: (chunk) => {
           accumulated += chunk
@@ -252,7 +278,7 @@ export function NyxChat() {
       setIsGenerating(false); setIsSearching(false); setSearchDone(false)
       abortRef.current = null
     }
-  }, [activeId, createSession, addMessage, updateMessage, setIsGenerating, abortRef, selectedModelId, renameSession, generateTitle])
+  }, [activeId, createSession, addMessage, updateMessage, setIsGenerating, abortRef, selectedModelId, customProviders, renameSession, generateTitle])
 
   const handleEditMessage = useCallback((message: ChatMessage, content: string) => {
     if (!activeId) return
@@ -436,13 +462,15 @@ export function NyxChat() {
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-background via-background/95 to-transparent pt-8">
           <div className="pointer-events-auto">
             <Composer
-              onSend={handleSend}
+              onSend={(text, files, options) => handleSend(text, files, undefined, options)}
               onStop={handleStop}
               isGenerating={isGenerating}
               enterToSend={settings.enterToSend}
               selectedModel={selectedModelId}
               onSelectModel={(id) => updateSettings({ selectedModel: id })}
-              models={NIM_MODELS}
+              models={availableModels}
+              customProviders={customProviders}
+              onCustomProvidersChange={setCustomProviders}
             />
           </div>
         </div>

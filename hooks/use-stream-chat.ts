@@ -6,6 +6,8 @@
 ═══════════════════════════════════════════════════ */
 
 import type { SourceItem } from '@/lib/storage'
+import type { InstalledSkill } from '@/lib/skills'
+import type { CustomProvider } from '@/lib/storage'
 
 interface StreamChatParams {
   messages:            Array<{ role: string; content: unknown }>
@@ -15,6 +17,9 @@ interface StreamChatParams {
   seed?:               number
   sessionId?:          string
   signal?:             AbortSignal
+  webSearch?:          boolean
+  skills?:             InstalledSkill[]
+  customProviders?:    CustomProvider[]
   onToken:             (chunk: string) => void
   onModelUsed?:        (model: string, provider: string) => void
   onSearchStart?:      (query: string) => void
@@ -26,21 +31,39 @@ interface StreamChatParams {
 export async function streamChatCompletion(params: StreamChatParams): Promise<string> {
   const {
     messages, model = 'auto', maxTokens = 1024, temperature = 0.2,
-    seed = 0, sessionId, signal,
+    seed = 0, sessionId, signal, webSearch = false, skills = [], customProviders = [],
     onToken, onModelUsed, onSearchStart, onSearchDone, onSources, onModelUnavailable,
   } = params
 
-  const response = await fetch('/api/chat', {
+  const customModelMatch = model.match(/^custom\/([^/]+)\/(.+)$/)
+  const customProvider = customModelMatch
+    ? customProviders.find(provider => provider.id === customModelMatch[1])
+    : undefined
+  const directConnection = Boolean(customProvider?.directConnection)
+  const customModelId = customModelMatch ? decodeURIComponent(customModelMatch[2]) : model
+  const customBaseUrl = customProvider?.baseUrl.replace(/\/$/, '') || ''
+  const customEndpoint = customBaseUrl.endsWith('/chat/completions')
+    ? customBaseUrl
+    : `${customBaseUrl}${customBaseUrl.endsWith('/v1') ? '/chat/completions' : '/v1/chat/completions'}`
+  const requestMessages = directConnection
+    ? [{ role: 'system', content: 'You are Nyx Agent, a helpful AI assistant. Use Markdown and answer concisely.' }, ...messages]
+    : messages
+  const response = await fetch(directConnection ? customEndpoint : '/api/chat', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'text/event-stream' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Accept': 'text/event-stream',
+      ...(directConnection && customProvider?.apiKey ? { Authorization: `Bearer ${customProvider.apiKey}` } : {}),
+    },
     body: JSON.stringify({
-      messages,
-      model,
+      messages: requestMessages,
+      model: directConnection ? customModelId : model,
       max_tokens:  maxTokens,
       temperature,
       seed,
       stream:      true,
-      sessionId,
+      ...(directConnection ? {} : { sessionId, webSearch, skills, customProviders }),
+      customProviders,
     }),
     signal,
   })
@@ -100,6 +123,7 @@ export async function streamChatCompletion(params: StreamChatParams): Promise<st
         }
 
         const token = json?.choices?.[0]?.delta?.content
+          || json?.candidates?.[0]?.content?.parts?.map((part: { text?: string }) => part.text || '').join('')
         if (token) { fullText += token; onToken(token) }
       } catch (parseErr) {
         // Only re-throw real errors, not JSON parse failures

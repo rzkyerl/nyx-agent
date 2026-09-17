@@ -13,6 +13,59 @@
   display: none;
 }
 
+/* ── Composer textarea scrollbar ─────────────────── */
+.composer-textarea-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+  overscroll-behavior: contain;
+}
+
+.composer-textarea-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.composer-textarea-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.composer-textarea-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.composer-textarea-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted-foreground);
+  background-clip: padding-box;
+}
+
+.model-list-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+  overscroll-behavior: contain;
+}
+
+.model-list-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.model-list-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.model-list-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+.model-list-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted-foreground);
+  background-clip: padding-box;
+}
+
 /* ── Markdown body ────────────────────────────────── */
 .md-body {
   font-size: 0.875rem;

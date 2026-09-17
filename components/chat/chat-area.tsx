@@ -6,6 +6,7 @@
 ═══════════════════════════════════════════════════ */
 
 import { useRef, useEffect, useState, type ReactNode } from 'react'
+import { Check, Globe2 } from 'lucide-react'
 import { Message }  from './message'
 import type { ChatMessage } from '@/lib/storage'
 
@@ -145,22 +146,28 @@ function SearchIndicator({ query, done, leaving }: { query: string; done: boolea
   return (
     <div
       className={[
-        'flex items-center gap-2 rounded-lg bg-muted px-3 py-2 text-sm text-muted-foreground transition-opacity duration-300',
+        'flex w-fit max-w-full items-center gap-2.5 rounded-full border border-border/70 bg-card/80 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur-sm transition-all duration-300',
         leaving ? 'opacity-0' : 'opacity-100',
       ].join(' ')}
     >
       {done ? (
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
+          <Check size={12} strokeWidth={2.5} />
+        </span>
       ) : (
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <span className="relative flex h-5 w-5 items-center justify-center rounded-full bg-sky-500/15 text-sky-600 dark:text-sky-400">
+          <Globe2 size={12} className="animate-[spin_3s_linear_infinite]" />
+          <span className="absolute inset-0 rounded-full border border-sky-500/30 animate-ping" />
+        </span>
       )}
-      <span>
-        {done ? 'Results found, composing answer...' : `Searching for: "${query || '...'}"`}
+      <span className="min-w-0 truncate">
+        <span className="font-medium text-foreground">{done ? 'Web results found' : 'Searching the web'}</span>
+        {!done && query && <span className="ml-1.5 text-muted-foreground">for “{query}”</span>}
       </span>
       {!done && (
-        <span className="flex gap-1">
+        <span className="flex shrink-0 items-center gap-0.5">
           {[0,1,2].map(i => (
-            <span key={i} className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+            <span key={i} className="inline-block h-1 w-1 rounded-full bg-sky-500 animate-pulse" style={{ animationDelay: `${i * 0.18}s` }} />
           ))}
         </span>
       )}

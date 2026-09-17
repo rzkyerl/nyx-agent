@@ -187,7 +187,8 @@ export function MarkdownRenderer({ content, isStreaming = false, sources = [] }:
     if (!md) return ''
     try {
       const cleaned   = stripSourcesBlock(md)
-      const raw       = marked.parse(cleaned, { async: false }) as string
+      const streamMarker = 'NYX_STREAM_CURSOR_TOKEN'
+      const raw       = marked.parse(isStreaming ? cleaned + streamMarker : cleaned, { async: false }) as string
       const withCites = injectCitations(raw, sourceMap)
       const sanitized = DOMPurify.sanitize(withCites, {
         ADD_ATTR:        ['data-code', 'data-cite', 'data-favicon', 'target', 'rel'],
@@ -195,9 +196,11 @@ export function MarkdownRenderer({ content, isStreaming = false, sources = [] }:
         ALLOW_DATA_ATTR: true,
       })
       if (!isStreaming) return sanitized
-      const CURSOR = '<span class="chat-stream-cursor"></span>'
-      const m      = sanitized.match(/([\s\S]*)(<\/(?:p|li|h[1-6]|td|blockquote)>)\s*$/)
-      return m ? m[1] + CURSOR + m[2] : sanitized + CURSOR
+      const marker = sanitized.indexOf(streamMarker)
+      const cursor = '<span class="chat-stream-cursor" aria-hidden="true"></span>'
+      return marker >= 0
+        ? sanitized.replace(streamMarker, cursor)
+        : sanitized + cursor
     } catch {
       return DOMPurify.sanitize(content || '')
     }

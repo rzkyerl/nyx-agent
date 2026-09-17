@@ -7,7 +7,37 @@ export const STORAGE_KEYS = {
   SESSIONS: 'nyx-sessions',
   ACTIVE:   'nyx-active',    // sessionStorage — lost on tab close
   SETTINGS: 'nyx-settings',
+  CUSTOM_PROVIDERS: 'nyx-custom-providers',
 } as const
+
+export interface CustomProviderModel {
+  id: string
+  label: string
+  description?: string
+}
+
+export interface CustomProvider {
+  id: string
+  name: string
+  baseUrl: string
+  apiKey: string
+  models: CustomProviderModel[]
+  directConnection: boolean
+}
+
+export function loadCustomProviders(): CustomProvider[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.CUSTOM_PROVIDERS)
+    const parsed = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed) ? parsed : []
+  } catch { return [] }
+}
+
+export function saveCustomProviders(providers: CustomProvider[]): void {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(STORAGE_KEYS.CUSTOM_PROVIDERS, JSON.stringify(providers))
+}
 
 export interface ChatFile {
   id: string
