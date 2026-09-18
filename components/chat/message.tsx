@@ -26,6 +26,8 @@ import {
 interface MessageProps {
   message:         ChatMessage
   isGenerating:    boolean
+  isSearching?:    boolean
+  activeSkillNames?: string[]
   isLastUser:      boolean
   isStreaming:     boolean
   showHaluWarning: boolean
@@ -39,7 +41,7 @@ interface MessageProps {
 }
 
 export function Message({
-  message, isGenerating, isLastUser, isStreaming = false,
+  message, isGenerating, isSearching = false, activeSkillNames = [], isLastUser, isStreaming = false,
   showHaluWarning = false,
   onRegenerate, onRetryAssistant, onCopyMessage, onLike, onDislike, onShare,
   onEdit,
@@ -84,9 +86,21 @@ export function Message({
   }, [isAI, exportConfig, message.content])
 
   const {
-    exportFile, previewFile, previewUrl,
+    exportFile, fetchBlob, fetchPreviewHtml,
     loading: exportLoading, error: exportError, done: exportDone,
   } = useExportFile()
+
+  // For PDF: blob URL in iframe. For DOCX/XLSX: HTML string in srcDoc iframe.
+  const [previewUrl, setPreviewUrl]     = useState<string | null>(null)
+  const [previewHtml, setPreviewHtml]   = useState<string | null>(null)
+
+  // Revoke any lingering blob URL when the component unmounts
+  useEffect(() => {
+    return () => {
+      if (previewUrl?.startsWith('blob:')) URL.revokeObjectURL(previewUrl)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleExport = useCallback(() => {
     if (!exportConfig) return
@@ -95,20 +109,50 @@ export function Message({
   }, [activeExportConfig, message.content, exportFile])
 
   const openPreview = useCallback(async () => {
-    if (!exportConfig) return
+    if (!activeExportConfig) return
     try {
-      await previewFile(activeExportConfig!, extractExportContent(message.content || ''))
+      const content = extractExportContent(message.content || '')
+      if (activeExportConfig.type === 'pdf') {
+        const blob = await fetchBlob(activeExportConfig, content)
+        setPreviewUrl(prev => {
+          if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev)
+          return URL.createObjectURL(blob)
+        })
+        setPreviewHtml(null)
+      } else {
+        const html = await fetchPreviewHtml(activeExportConfig, content)
+        setPreviewHtml(html)
+        setPreviewUrl(null)
+      }
       setPreviewOpen(true)
+      window.dispatchEvent(new CustomEvent('nyx-close-other-previews', { detail: message.id }))
       window.dispatchEvent(new CustomEvent('nyx-preview-change', { detail: { open: true, width: previewWidth } }))
     } catch {
-      // The download card still exposes the normal retry path.
+      // silent — user can still use Download
     }
-  }, [activeExportConfig, message.content, previewFile, previewWidth])
+  }, [activeExportConfig, fetchBlob, fetchPreviewHtml, message.content, message.id, previewWidth])
 
   const closePreview = useCallback(() => {
     setPreviewOpen(false)
+    setPreviewHtml(null)
+    setPreviewUrl(prev => {
+      if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev)
+      return null
+    })
     window.dispatchEvent(new CustomEvent('nyx-preview-change', { detail: { open: false, width: 0 } }))
   }, [])
+
+  useEffect(() => {
+    const handleCloseOtherPreviews = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail
+      if (detail && detail !== message.id && previewOpen) {
+        closePreview()
+      }
+    }
+
+    window.addEventListener('nyx-close-other-previews', handleCloseOtherPreviews)
+    return () => window.removeEventListener('nyx-close-other-previews', handleCloseOtherPreviews)
+  }, [closePreview, message.id, previewOpen])
 
   useEffect(() => {
     if (!exportConfig || isStreaming) return
@@ -126,8 +170,16 @@ export function Message({
   }, [isAI, isStreaming, hasContent, message.sources, message.content])
 
   // Thinking overlay
+  const skillStatusText = activeSkillNames.length > 0
+    ? (activeSkillNames.length === 1 ? `Using ${activeSkillNames[0]}` : 'Using skills')
+    : null
+  const statusText = isSearching
+    ? 'Searching the web'
+    : (skillStatusText || (thinkingSeconds < 3 ? 'Thinking' : 'Processing'))
+  const shouldShowThinking = (isStreaming || isSearching || activeSkillNames.length > 0) && !hasContent
+
   useEffect(() => {
-    if (isStreaming && !hasContent) {
+    if (shouldShowThinking) {
       setShowThinking(true)
       setThinkingSeconds(0)
       thinkingTimerRef.current = setInterval(() => setThinkingSeconds(s => s + 1), 1000)
@@ -137,7 +189,7 @@ export function Message({
       if (thinkingTimerRef.current) { clearInterval(thinkingTimerRef.current); thinkingTimerRef.current = null }
     }
     return () => { if (thinkingTimerRef.current) clearInterval(thinkingTimerRef.current) }
-  }, [isStreaming, hasContent])
+  }, [shouldShowThinking])
 
   useEffect(() => {
     if (hasContent && showThinking) {
@@ -190,14 +242,18 @@ export function Message({
 
         {/* Thinking overlay */}
         {showThinking && (
-          <div className="flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground">
-            <span>{thinkingSeconds < 3 ? 'Thinking' : 'Processing'}</span>
-            <span className="flex gap-1">
+          <div className="-mt-0.5 flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground transition-opacity duration-200 ease-out">
+            <span className="font-medium text-foreground/80">{statusText}</span>
+            <span className="flex items-center gap-1">
               {[0,1,2].map(i => (
-                <span key={i} className="inline-block h-1.5 w-1.5 rounded-full bg-muted-foreground animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                <span
+                  key={i}
+                  className="inline-block h-1.5 w-1.5 rounded-full bg-foreground/60 animate-pulse"
+                  style={{ animationDelay: `${i * 0.15}s`, animationDuration: '1.2s' }}
+                />
               ))}
             </span>
-            {thinkingSeconds > 0 && <span className="text-xs">{thinkingSeconds}s</span>}
+            {thinkingSeconds > 0 && !isSearching && !skillStatusText && <span className="text-[11px] text-muted-foreground">{thinkingSeconds}s</span>}
           </div>
         )}
 
@@ -318,6 +374,7 @@ export function Message({
           <DocumentPreview
             config={activeExportConfig!}
             previewUrl={previewUrl}
+            previewHtml={previewHtml}
             width={previewWidth}
             onWidthChange={setPreviewWidth}
             onClose={closePreview}
@@ -483,10 +540,11 @@ function DocumentSelect({
 }
 
 function DocumentPreview({
-  config, previewUrl, width, onWidthChange, onClose, onDownload, isDownloading,
+  config, previewUrl, previewHtml, width, onWidthChange, onClose, onDownload, isDownloading,
 }: {
   config: ExportConfig
   previewUrl: string | null
+  previewHtml: string | null
   width: number
   onWidthChange: (width: number) => void
   onClose: () => void
@@ -528,13 +586,42 @@ function DocumentPreview({
     reportLayout(next ? 56 : width)
   }, [collapsed, reportLayout, width])
 
+  const renderBody = () => {
+    // PDF — blob URL in iframe
+    if (previewUrl) {
+      return (
+        <iframe
+          title={`Preview ${config.title}`}
+          src={previewUrl}
+          className="block h-full min-h-[32rem] w-full border-0 bg-white shadow-sm overscroll-contain"
+        />
+      )
+    }
+    // DOCX / XLSX — server-rendered HTML with A4 page simulation in srcDoc iframe
+    if (previewHtml) {
+      return (
+        <iframe
+          title={`Preview ${config.title}`}
+          srcDoc={previewHtml}
+          sandbox="allow-scripts"
+          className="block h-full min-h-[32rem] w-full border-0 bg-[#e8eaed] overscroll-contain"
+        />
+      )
+    }
+    return (
+      <div className="flex min-h-full flex-col items-center justify-center gap-3 p-8 text-center text-sm text-slate-600">
+        <p className="font-medium text-slate-800">Memuat preview…</p>
+      </div>
+    )
+  }
+
   return (
-    <div className="pointer-events-none fixed inset-0 z-50 flex justify-end overscroll-none bg-black/40 md:bg-transparent" role="dialog" aria-modal="true" aria-label={`Preview ${config.title}`}>
-      <button type="button" className="pointer-events-auto absolute inset-0 cursor-default md:pointer-events-none" onClick={onClose} aria-label="Close preview" />
+    <div className="pointer-events-none fixed inset-0 z-50 flex justify-end overscroll-none" role="dialog" aria-modal="false" aria-label={`Preview ${config.title}`}>
       <aside
         style={{ '--preview-width': `${collapsed ? 56 : width}px` } as React.CSSProperties}
-        className="pointer-events-auto relative flex h-full w-full max-w-none flex-col border-l border-border bg-card shadow-2xl md:w-[var(--preview-width)]"
+        className="pointer-events-auto relative ml-auto flex h-full w-full max-w-none flex-col border-l border-border bg-background shadow-2xl md:w-[var(--preview-width)]"
       >
+        {/* Resize handle */}
         <div
           className="absolute -left-2 top-0 z-10 hidden h-full w-4 cursor-col-resize items-center justify-center md:flex"
           onPointerDown={handleResizeStart}
@@ -545,38 +632,48 @@ function DocumentPreview({
         >
           <GripVertical size={14} className="text-muted-foreground/60" />
         </div>
+
+        {/* Header */}
         <div className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-4">
-          {!collapsed && <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-foreground">{config.title}</p>
-            <p className="text-[11px] text-muted-foreground">Document · {config.type.toUpperCase()} · {config.template} · {config.font}</p>
-          </div>}
-          {!collapsed && <button
+          {!collapsed && (
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-foreground">{config.title}</p>
+              <p className="text-[11px] text-muted-foreground">
+                {config.type.toUpperCase()} · {config.template} · {config.font}
+              </p>
+            </div>
+          )}
+          {!collapsed && (
+            <button
+              type="button"
+              onClick={onDownload}
+              disabled={isDownloading}
+              className="rounded-md bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-secondary/80 disabled:opacity-60"
+            >
+              {isDownloading ? 'Generating…' : 'Download'}
+            </button>
+          )}
+          <button
             type="button"
-            onClick={onDownload}
-            disabled={isDownloading}
-            className="rounded-md bg-secondary px-3 py-1.5 text-xs font-medium text-secondary-foreground transition-colors hover:bg-secondary/80 disabled:opacity-60"
+            onClick={toggleCollapsed}
+            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label={collapsed ? 'Expand preview' : 'Collapse preview'}
           >
-            {isDownloading ? 'Generating…' : 'Download'}
-          </button>}
-          <button type="button" onClick={toggleCollapsed} className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-label={collapsed ? 'Expand preview' : 'Collapse preview'}>
             {collapsed ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}
           </button>
-          <button type="button" onClick={onClose} className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground" aria-label="Close preview">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            aria-label="Close preview"
+          >
             <X size={19} strokeWidth={2} />
           </button>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-muted/40 p-4 sm:p-6">
-          {previewUrl && config.type === 'pdf' ? (
-            <iframe
-              title={`Preview ${config.title}`}
-              src={previewUrl}
-              className="block h-full min-h-[32rem] w-full overscroll-contain border-0 bg-white shadow-sm"
-            />
-          ) : (
-            <div className="flex min-h-full items-center justify-center bg-white p-8 text-center text-sm text-slate-600 shadow-sm">
-              Preview binary {config.type.toUpperCase()} tersedia setelah file dibuat. Gunakan tombol Download untuk membuka file dengan aplikasi yang sesuai.
-            </div>
-          )}
+
+        {/* Body */}
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          {renderBody()}
         </div>
       </aside>
     </div>

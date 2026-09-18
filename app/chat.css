@@ -278,15 +278,27 @@
   height: 16px;
   border-radius: 50%;
   background: var(--color-border);
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
   font-size: 9px;
   font-weight: 700;
   overflow: hidden;
-  background-size: cover;
-  background-position: center;
   flex-shrink: 0;
+  color: transparent;
 }
 
-.md-cite-icon.has-favicon { background-size: cover; font-size: 0; }
+.md-cite-icon.has-favicon {
+  background-size: cover;
+  font-size: 0;
+  color: transparent;
+}
+
+.md-cite-icon.letter-fallback {
+  color: var(--color-foreground);
+  font-size: 9px;
+}
+
 .md-cite-domain { font-size: 0.7rem; color: var(--color-muted-foreground); }
 .md-cite-plain  { font-size: 0.8em; opacity: 0.7; }
 

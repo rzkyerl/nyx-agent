@@ -5,7 +5,7 @@
    response, calls /api/export, and triggers download.
 ═══════════════════════════════════════════════════ */
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback } from 'react'
 import type { ExportFont, ExportType } from '@/app/api/export/route'
 
 export type { ExportFont }
@@ -69,10 +69,70 @@ export function stripExportConfig(content: string): string {
 /**
  * Extracts the "content" part of an AI message — everything before
  * the export-config fence — to be used as the document body.
+ *
+ * Fallback: if nothing exists before the fence (model output the block
+ * immediately without any explanation), strip the block and use the
+ * rest of the message so /api/export never receives an empty body.
  */
 export function extractExportContent(content: string): string {
   const idx = content.search(EXPORT_CONFIG_RE)
-  return idx >= 0 ? content.slice(0, idx).trimEnd() : content.trimEnd()
+  if (idx < 0) return content.trimEnd()
+  const before = content.slice(0, idx).trimEnd()
+  if (before.length > 0) return before
+  return content.replace(EXPORT_CONFIG_RE, '').trimEnd()
+}
+
+// ── Core fetch ─────────────────────────────────────
+
+async function fetchExportBlob(config: ExportConfig, content: string, rows?: string[][]): Promise<Blob> {
+  const body: Record<string, unknown> = {
+    type:     config.type,
+    title:    config.title,
+    filename: config.filename,
+    template: config.template,
+    font:     config.font,
+    content,
+  }
+  if (rows && rows.length > 0) body.rows = rows
+
+  const res = await fetch('/api/export', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(body),
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` })) as { error?: string }
+    throw new Error(err.error || `Export failed: HTTP ${res.status}`)
+  }
+
+  return res.blob()
+}
+
+async function fetchExportPreviewHtml(config: ExportConfig, content: string, rows?: string[][]): Promise<string> {
+  const body: Record<string, unknown> = {
+    type:     config.type,
+    title:    config.title,
+    filename: config.filename,
+    template: config.template,
+    font:     config.font,
+    content,
+    preview:  true,
+  }
+  if (rows && rows.length > 0) body.rows = rows
+
+  const res = await fetch('/api/export', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(body),
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` })) as { error?: string }
+    throw new Error(err.error || `Preview failed: HTTP ${res.status}`)
+  }
+
+  return res.text()
 }
 
 // ── Hook ───────────────────────────────────────────
@@ -83,40 +143,15 @@ export function useExportFile() {
     error:   null,
     done:    false,
   })
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
-
-  const requestExport = useCallback(async (config: ExportConfig, content: string, rows?: string[][]) => {
-    const body: Record<string, unknown> = {
-      type: config.type,
-      title: config.title,
-      filename: config.filename,
-      template: config.template,
-      font: config.font,
-      content,
-    }
-    if (rows && rows.length > 0) body.rows = rows
-
-    const res = await fetch('/api/export', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` })) as { error?: string }
-      throw new Error(err.error || `Export failed: HTTP ${res.status}`)
-    }
-    return res.blob()
-  }, [])
 
   const exportFile = useCallback(
     async (config: ExportConfig, content: string, rows?: string[][]) => {
       setState({ loading: true, error: null, done: false })
       try {
-        // Read binary and trigger browser download
-        const blob     = await requestExport(config, content, rows)
-        const url      = URL.createObjectURL(blob)
-        const anchor   = document.createElement('a')
-        const ext      = config.type === 'docx' ? 'docx' : config.type === 'xlsx' ? 'xlsx' : 'pdf'
+        const blob   = await fetchExportBlob(config, content, rows)
+        const url    = URL.createObjectURL(blob)
+        const anchor = document.createElement('a')
+        const ext    = config.type === 'docx' ? 'docx' : config.type === 'xlsx' ? 'xlsx' : 'pdf'
         anchor.href     = url
         anchor.download = `${config.filename}.${ext}`
         document.body.appendChild(anchor)
@@ -125,7 +160,6 @@ export function useExportFile() {
         URL.revokeObjectURL(url)
 
         setState({ loading: false, error: null, done: true })
-        // Reset "done" after 3s so the button can be clicked again
         setTimeout(() => setState(s => ({ ...s, done: false })), 3000)
       } catch (err) {
         setState({
@@ -135,21 +169,22 @@ export function useExportFile() {
         })
       }
     },
-    [requestExport]
+    []
   )
 
-  const previewFile = useCallback(async (config: ExportConfig, content: string, rows?: string[][]) => {
-    const blob = await requestExport(config, content, rows)
-    setPreviewUrl(previous => {
-      if (previous) URL.revokeObjectURL(previous)
-      return URL.createObjectURL(blob)
-    })
-    return blob.type
-  }, [requestExport])
+  /** Returns the raw blob so the caller can render it however needed (PDF). */
+  const fetchBlob = useCallback(
+    (config: ExportConfig, content: string, rows?: string[][]) =>
+      fetchExportBlob(config, content, rows),
+    []
+  )
 
-  useEffect(() => () => {
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
-  }, [previewUrl])
+  /** Returns rendered HTML string for DOCX / XLSX preview (server-side). */
+  const fetchPreviewHtml = useCallback(
+    (config: ExportConfig, content: string, rows?: string[][]) =>
+      fetchExportPreviewHtml(config, content, rows),
+    []
+  )
 
-  return { exportFile, previewFile, previewUrl, ...state }
+  return { exportFile, fetchBlob, fetchPreviewHtml, ...state }
 }

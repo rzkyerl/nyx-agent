@@ -66,7 +66,14 @@ export function parseSources(content: string): { body: string; sources: SourceIt
     try {
       domain  = new URL(url).hostname.replace(/^www\./, '')
       favicon = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`
-    } catch { domain = url }
+    } catch {
+      domain = url
+      try {
+        const parsed = new URL(`https://${url}`)
+        domain = parsed.hostname.replace(/^www\./, '')
+        favicon = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`
+      } catch { domain = url }
+    }
 
     title = title.replace(/https?:\/\/\S+/g, '').replace(/[-–—\s]+$/, '').trim()
     if (!title) title = domain

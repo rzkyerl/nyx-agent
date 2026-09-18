@@ -34,7 +34,8 @@ interface ExportRequest {
   rows?:     string[][]
   filename?: string
   template?: ExportTemplate
-  font?: ExportFont
+  font?:     ExportFont
+  preview?:  boolean
 }
 
 // ── Helpers ────────────────────────────────────────
@@ -61,6 +62,11 @@ function cleanMarkdown(text: string): string {
     .trim()
 }
 
+function isPageBreakLine(line: string): boolean {
+  const normalized = line.trim().replace(/\s+/g, '')
+  return /^(?:-{3,}|_{3,}|\*{3,})$/.test(normalized)
+}
+
 function parseDocumentBlocks(text: string): DocumentBlock[] {
   const lines = text.split(/\r?\n/)
   const blocks: DocumentBlock[] = []
@@ -70,7 +76,7 @@ function parseDocumentBlocks(text: string): DocumentBlock[] {
     const line = lines[index].trim()
     if (!line) { index++; continue }
 
-    if (/^(?:---|\*\s*\*\s*\*)$/.test(line)) {
+    if (isPageBreakLine(line)) {
       blocks.push({ kind: 'pageBreak' })
       index++; continue
     }
@@ -315,13 +321,31 @@ async function generatePDF(title: string, content: string, requestedTemplate: Ex
 // ── DOCX generator ─────────────────────────────────
 
 async function generateDOCX(title: string, content: string): Promise<Buffer> {
-  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Table, TableRow, TableCell, WidthType } =
+  const { Document, Packer, Paragraph, TextRun, HeadingLevel, AlignmentType, Table, TableRow, TableCell, WidthType, BorderStyle } =
     await import('docx')
 
   const blocks = parseDocumentBlocks(content)
-  const date       = new Date().toLocaleDateString('id-ID', {
+  const date = new Date().toLocaleDateString('id-ID', {
     day: 'numeric', month: 'long', year: 'numeric',
   })
+
+  // ── Pre-scan: build numbered-list registry BEFORE flatMap ──
+  // Each ordered list block gets a unique stable reference ID based on its
+  // position in the blocks array. We register ALL of them upfront so the
+  // numbering.config array is always consistent with the paragraph references.
+  const numberedListRefs: Map<number, string> = new Map()
+  blocks.forEach((block, idx) => {
+    if (block.kind === 'list' && block.items?.some(item => item.ordered)) {
+      numberedListRefs.set(idx, `nyx-list-${idx}`)
+    }
+  })
+
+  const borderStyle = {
+    top:    { style: BorderStyle.SINGLE, size: 1, color: 'CBD5E1' },
+    bottom: { style: BorderStyle.SINGLE, size: 1, color: 'CBD5E1' },
+    left:   { style: BorderStyle.SINGLE, size: 1, color: 'CBD5E1' },
+    right:  { style: BorderStyle.SINGLE, size: 1, color: 'CBD5E1' },
+  }
 
   const children = [
     new Paragraph({
@@ -332,67 +356,100 @@ async function generateDOCX(title: string, content: string): Promise<Buffer> {
     new Paragraph({
       children: [
         new TextRun({
-          text:   `Dibuat oleh Nyx Agent · ${date}`,
-          color:  '888888',
-          size:   18,
+          text:    `Dibuat oleh Nyx Agent · ${date}`,
+          color:   '888888',
+          size:    18,
           italics: true,
         }),
       ],
       spacing: { after: 200 },
     }),
     ...blocks.flatMap((block, blockIndex) => {
-      if (block.kind === 'pageBreak') return [new Paragraph({ pageBreakBefore: true })]
+      if (block.kind === 'pageBreak') {
+        return [new Paragraph({ pageBreakBefore: true })]
+      }
+
       if (block.kind === 'heading') {
-        const heading = block.level === 1 ? HeadingLevel.HEADING_1 : block.level === 2 ? HeadingLevel.HEADING_2 : HeadingLevel.HEADING_3
-        return [new Paragraph({ text: block.text || '', heading, spacing: { before: block.level === 1 ? 260 : 160, after: 100 } })]
-      }
-      if (block.kind === 'list') {
-        return (block.items || []).map(item => new Paragraph({
-          text: item.text,
-          bullet: item.ordered ? undefined : { level: item.level },
-          numbering: item.ordered ? { reference: `nyx-numbered-${blockIndex}`, level: item.level } : undefined,
-          indent: { left: 720 + item.level * 360, hanging: 360 },
-          spacing: { after: 60 },
-        }))
-      }
-      if (block.kind === 'table') {
-        return [new Table({
-          width: { size: 100, type: WidthType.PERCENTAGE },
-          rows: (block.rows || []).map((row, rowIndex) => new TableRow({
-            children: row.map(cell => new TableCell({
-              children: [new Paragraph({
-                children: [new TextRun({ text: cell, bold: rowIndex === 0, size: 20 })],
-              })],
-              shading: rowIndex === 0 ? { fill: 'E2E8F0' } : undefined,
-            })),
-          })),
+        const heading = block.level === 1
+          ? HeadingLevel.HEADING_1
+          : block.level === 2
+            ? HeadingLevel.HEADING_2
+            : HeadingLevel.HEADING_3
+        return [new Paragraph({
+          text:    block.text || '',
+          heading,
+          spacing: { before: block.level === 1 ? 260 : 160, after: 100 },
         })]
       }
+
+      if (block.kind === 'list') {
+        const ref = numberedListRefs.get(blockIndex)
+        return (block.items || []).map(item => new Paragraph({
+          children: [new TextRun({ text: item.text, size: 22 })],
+          // Use bullet for unordered; numbering reference for ordered
+          bullet:    !item.ordered ? { level: item.level } : undefined,
+          numbering: item.ordered && ref ? { reference: ref, level: item.level } : undefined,
+          spacing:   { after: 60 },
+        }))
+      }
+
+      if (block.kind === 'table') {
+        const tableRows = block.rows || []
+        if (tableRows.length === 0) return []
+        const colCount = Math.max(...tableRows.map(r => r.length))
+        return [new Table({
+          width: { size: 100, type: WidthType.PERCENTAGE },
+          rows: tableRows.map((row, rowIndex) => {
+            // Pad short rows to match column count
+            const cells = Array.from({ length: colCount }, (_, ci) => row[ci] ?? '')
+            return new TableRow({
+              tableHeader: rowIndex === 0,
+              children: cells.map(cell => new TableCell({
+                borders: borderStyle,
+                shading: rowIndex === 0 ? { fill: 'E2E8F0' } : undefined,
+                children: [new Paragraph({
+                  children: [new TextRun({
+                    text: cell,
+                    bold: rowIndex === 0,
+                    size: 20,
+                  })],
+                  spacing: { before: 60, after: 60 },
+                })],
+              })),
+            })
+          }),
+        })]
+      }
+
+      // paragraph
       return [new Paragraph({
         children: [new TextRun({ text: block.text || '', size: 22 })],
-        spacing: { after: 120 },
+        spacing:  { after: 120 },
         alignment: AlignmentType.JUSTIFIED,
       })]
     }),
   ]
 
   const doc = new Document({
-    creator:  'Nyx Agent by CTRL Build',
+    creator: 'Nyx Agent by CTRL Build',
     title,
-    numbering: {
-      config: blocks
-        .filter(block => block.kind === 'list' && block.items?.some(item => item.ordered))
-        .map((_, index) => ({
-          reference: `nyx-numbered-${index}`,
-          levels: Array.from({ length: 4 }, (_, level) => ({
-            level,
-            format: 'decimal' as const,
-            text: `%${level + 1}.`,
-            alignment: AlignmentType.LEFT,
-            style: { paragraph: { indent: { left: 720 + level * 360, hanging: 360 } } },
-          })),
+    // Only register numbering configs for blocks that actually have ordered lists
+    numbering: numberedListRefs.size > 0 ? {
+      config: Array.from(numberedListRefs.entries()).map(([, ref]) => ({
+        reference: ref,
+        levels: Array.from({ length: 4 }, (_, level) => ({
+          level,
+          format:    'decimal' as const,
+          text:      `%${level + 1}.`,
+          alignment: AlignmentType.LEFT,
+          style: {
+            paragraph: {
+              indent: { left: 720 + level * 360, hanging: 360 },
+            },
+          },
         })),
-    },
+      })),
+    } : undefined,
     sections: [{ children }],
   })
 
@@ -474,7 +531,7 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { type, title = 'Dokumen', content = '', rows = [], filename, template = 'auto', font = 'auto' } = body
+  const { type, title = 'Dokumen', content = '', rows = [], filename, template = 'auto', font = 'auto', preview = false } = body
 
   if (!['pdf', 'docx', 'xlsx'].includes(type)) {
     return Response.json({ error: 'type must be pdf, docx, or xlsx' }, { status: 400 })
@@ -484,10 +541,8 @@ export async function POST(req: NextRequest) {
 
   try {
     if (type === 'pdf') {
-      if (!content.trim()) {
-        return Response.json({ error: 'content is required for PDF export' }, { status: 400 })
-      }
-      const buf = await generatePDF(title, content, template, font)
+      const pdfContent = content.trim() || title
+      const buf = await generatePDF(title, pdfContent, template, font)
       return new Response(new Uint8Array(buf), {
         headers: {
           'Content-Type':        'application/pdf',
@@ -498,10 +553,12 @@ export async function POST(req: NextRequest) {
     }
 
     if (type === 'docx') {
-      if (!content.trim()) {
-        return Response.json({ error: 'content is required for DOCX export' }, { status: 400 })
+      const docxContent = content.trim() || title
+      if (preview) {
+        const html = generatePreviewHTML('docx', title, docxContent, [], template)
+        return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
       }
-      const buf = await generateDOCX(title, content)
+      const buf = await generateDOCX(title, docxContent)
       return new Response(new Uint8Array(buf), {
         headers: {
           'Content-Type':        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -511,13 +568,17 @@ export async function POST(req: NextRequest) {
       })
     }
 
-    // xlsx
+    // xlsx — auto-parse markdown table if rows not provided
     if (rows.length === 0 && content.trim()) {
-      // Auto-parse markdown table from content if rows not provided
       const tableRows = parseMarkdownTable(content)
       body.rows = tableRows.length > 0 ? tableRows : [['Konten'], [content.slice(0, 200)]]
     }
-    const buf = await generateXLSX(title, body.rows!.length > 0 ? body.rows! : [['Konten'], [content.slice(0, 200)]])
+    const exportRows = (body.rows ?? []).length > 0 ? body.rows! : [['Konten'], [content.slice(0, 200)]]
+    if (preview) {
+      const html = generatePreviewHTML('xlsx', title, content, exportRows, template)
+      return new Response(html, { headers: { 'Content-Type': 'text/html; charset=utf-8' } })
+    }
+    const buf = await generateXLSX(title, exportRows)
     return new Response(new Uint8Array(buf), {
       headers: {
         'Content-Type':        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -540,10 +601,252 @@ function parseMarkdownTable(text: string): string[][] {
   const lines = text.split('\n').filter(l => l.trim().startsWith('|'))
   const rows: string[][] = []
   for (const line of lines) {
-    // Skip separator rows like |---|---|
     if (/^\|[\s\-:|]+\|$/.test(line.trim())) continue
     const cells = line.split('|').map(c => c.trim()).filter((_, i, a) => i > 0 && i < a.length - 1)
     if (cells.length > 0) rows.push(cells)
   }
   return rows
+}
+
+// ── HTML preview generator (DOCX / XLSX only) ─────
+// Produces a self-contained HTML page with A4 page simulation.
+// CSS is embedded so it works in an <iframe srcDoc> without any
+// external stylesheet dependency.
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+         .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+}
+
+function blockToHtml(block: DocumentBlock, counters: number[], tmpl: Exclude<ExportTemplate, 'auto'>): string | null {
+  if (block.kind === 'pageBreak') return null
+
+  if (block.kind === 'heading') {
+    let text = escapeHtml(block.text || '')
+    if (tmpl === 'formal' && block.level) {
+      counters[block.level - 1]++
+      for (let i = block.level; i < counters.length; i++) counters[i] = 0
+      text = `${counters.slice(0, block.level).join('.')}. ${text}`
+    }
+    const tag = block.level === 1 ? 'h1' : block.level === 2 ? 'h2' : 'h3'
+    return `<${tag}>${text}</${tag}>`
+  }
+
+  if (block.kind === 'list' && block.items?.length) {
+    const tag = block.items[0].ordered ? 'ol' : 'ul'
+    const items = block.items.map(item => {
+      const ind = item.level > 0 ? ` style="margin-left:${item.level * 1.4}rem"` : ''
+      return `<li${ind}>${escapeHtml(item.text)}</li>`
+    }).join('')
+    return `<${tag}>${items}</${tag}>`
+  }
+
+  if (block.kind === 'table' && block.rows?.length) {
+    const cols = Math.max(...block.rows.map(r => r.length))
+    const head = block.rows[0].map(c => `<th>${escapeHtml(c)}</th>`).join('')
+    const body = block.rows.slice(1).map((r, i) => {
+      const cells = Array.from({ length: cols }, (_, ci) => r[ci] ?? '')
+      return `<tr class="${i % 2 === 1 ? 'stripe' : ''}">${cells.map(c => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`
+    }).join('')
+    return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
+  }
+
+  if (block.text) return `<p${tmpl === 'formal' ? ' class="just"' : ''}>${escapeHtml(block.text)}</p>`
+  return null
+}
+
+function blocksToHtml(blocks: DocumentBlock[], tmpl: Exclude<ExportTemplate, 'auto'>): string {
+  const counters = [0, 0, 0]
+  const out: string[] = []
+
+  for (const block of blocks) {
+    const html = blockToHtml(block, counters, tmpl)
+    if (html) out.push(html)
+    else out.push('<hr class="page-break"/>')
+  }
+
+  return out.join('\n')
+}
+
+function renderPreviewPages(
+  blocks: DocumentBlock[],
+  tmpl: Exclude<ExportTemplate, 'auto'>,
+  title: string,
+  date: string,
+): string {
+  const pageGroups: DocumentBlock[][] = []
+  let currentPage: DocumentBlock[] = []
+
+  for (const block of blocks) {
+    if (block.kind === 'pageBreak') {
+      if (currentPage.length || pageGroups.length === 0) {
+        pageGroups.push(currentPage)
+      }
+      currentPage = []
+      continue
+    }
+    currentPage.push(block)
+  }
+
+  if (currentPage.length || pageGroups.length === 0) {
+    pageGroups.push(currentPage)
+  }
+
+  const counters = [0, 0, 0]
+  return pageGroups.map((pageBlocks, pageIndex) => {
+    const showHeader = pageIndex === 0
+    const headerHtml = showHeader
+      ? (tmpl === 'academic'
+        ? `<div class="cover"><div class="cover-title">${escapeHtml(title)}</div><div class="cover-meta">Nyx Agent · ${date}</div></div>`
+        : `${tmpl === 'formal' ? '<div class="formal-bar"></div>' : ''}
+           <h1 class="doc-title">${escapeHtml(title)}</h1>
+           <div class="doc-meta">Dibuat oleh Nyx Agent · ${date}</div>
+           <hr class="divider" />`)
+      : ''
+
+    const bodyHtml = pageBlocks
+      .map(block => blockToHtml(block, counters, tmpl))
+      .filter((chunk): chunk is string => Boolean(chunk))
+      .join('\n')
+
+    return `<div class="page" data-page-break="true" data-page-index="${pageIndex}">${headerHtml}${bodyHtml}</div>`
+  }).join('\n')
+}
+
+function generatePreviewHTML(
+  type: ExportType,
+  title: string,
+  content: string,
+  rows: string[][],
+  requestedTemplate: ExportTemplate,
+): string {
+  const t    = resolveTemplate(requestedTemplate, title, content)
+  const date = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })
+  const safe = escapeHtml(title)
+
+  let bodyHtml: string
+  if (type === 'xlsx') {
+    if (!rows.length) {
+      bodyHtml = '<p><em>(No data)</em></p>'
+    } else {
+      const cols = Math.max(...rows.map(r => r.length))
+      const head = rows[0].map(c => `<th>${escapeHtml(c)}</th>`).join('')
+      const body = rows.slice(1).map((r, i) => {
+        const cells = Array.from({ length: cols }, (_, ci) => r[ci] ?? '')
+        return `<tr class="${i % 2 === 1 ? 'stripe' : ''}">${cells.map(c => `<td>${escapeHtml(c)}</td>`).join('')}</tr>`
+      }).join('')
+      bodyHtml = `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`
+    }
+  } else {
+    const blocks = parseDocumentBlocks(content || title)
+    bodyHtml = renderPreviewPages(blocks, t, title, date)
+  }
+
+  const bodyFont  = t === 'academic' ? 'Georgia,"Times New Roman",serif' : '"Segoe UI",Inter,sans-serif'
+  const bodySize  = t === 'academic' ? '11pt' : '10.5pt'
+  const lineH     = t === 'academic' ? '1.7'  : t === 'formal' ? '1.55' : '1.65'
+  const textColor = t === 'formal'   ? '#263238' : '#1a1a1a'
+  const thBg      = t === 'academic' ? '#f1f5f9' : '#e2e8f0'
+  const divColor  = t === 'formal'   ? '#334155' : '#e0e0e0'
+  const docTitleSz = t === 'academic' ? '20pt' : '18pt'
+
+  // A4 at 96 dpi ≈ 794 × 1123 px
+  // Strategy: render all content in one natural flow inside a single .page div.
+  // The page div has A4 width and auto height — content overflows naturally.
+  // CSS break-inside:avoid keeps headings/tables/lists from splitting awkwardly.
+  // A background repeating-linear-gradient draws subtle A4 page boundary lines
+  // every 1123px so the user gets a visual sense of where pages are without
+  // any JS-based splitting that would differ from the DOCX renderer.
+  return `<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>${safe}</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+
+/* ── Page wrapper ── */
+html,body{
+  background:#e8eaed;
+  font-family:${bodyFont};
+  font-size:${bodySize};
+  line-height:${lineH};
+  color:${textColor};
+}
+.page-outer{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:0;
+  padding:20px 16px 32px;
+}
+.page{
+  position:relative;
+  background:#fff;
+  width:794px;
+  min-height:1123px;
+  padding:42px 56px 48px;
+  box-shadow:0 2px 10px rgba(0,0,0,.18);
+  border:1px solid rgba(148, 163, 184, 0.35);
+  border-radius:2px;
+  break-inside:avoid;
+  page-break-before:always;
+  page-break-inside:avoid;
+  margin:0 0 28px;
+  background-image:linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 1110px,
+    rgba(148, 163, 184, 0.28) 1110px,
+    rgba(148, 163, 184, 0.28) 1112px,
+    transparent 1112px,
+    transparent 1123px
+  );
+}
+.page:first-child{page-break-before:auto}
+.page:last-child{margin-bottom:0}
+.page + .page{margin-top:0; border-top:1px solid rgba(148,163,184,.45)}
+
+/* ── Cover (academic) ── */
+.cover{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;min-height:340px;padding-bottom:28px;border-bottom:1px solid #e2e8f0;margin-bottom:24px}
+.cover-title{font-size:22pt;font-weight:700;line-height:1.2;margin-bottom:10px}
+.cover-meta{font-size:11pt;color:#64748b}
+
+/* ── Doc header ── */
+.formal-bar{border-top:2px solid #334155;margin-bottom:12px}
+.doc-title{font-size:${docTitleSz};font-weight:700;margin-bottom:6px}
+.doc-meta{font-size:9pt;color:#888;margin-bottom:14px}
+.divider{border:none;border-top:1px solid ${divColor};margin-bottom:14px}
+
+/* ── Typography ── */
+h1{font-size:16pt;font-weight:700;margin:20px 0 8px;break-after:avoid}
+h2{font-size:13pt;font-weight:700;margin:14px 0 6px;break-after:avoid}
+h3{font-size:11pt;font-weight:700;margin:10px 0 5px;break-after:avoid}
+p{margin-bottom:10px}
+p.just{text-align:justify}
+ul,ol{padding-left:1.4rem;margin-bottom:10px;break-inside:avoid}
+li{margin-bottom:4px}
+
+/* ── Manual page break ── */
+.page-break{
+  border:none;
+  border-top:2px dashed #94a3b8;
+  margin:32px 0;
+  break-before:page;
+}
+
+/* ── Table ── */
+table{width:100%;border-collapse:collapse;margin:12px 0 16px;font-size:9pt;break-inside:avoid}
+th,td{border:1px solid #cbd5e1;padding:6px 8px;text-align:left;vertical-align:top}
+th{background:${thBg};font-weight:700}
+tr.stripe td{background:#f8fafc}
+</style>
+</head>
+<body>
+<div class="page-outer">
+  ${bodyHtml || (t === 'academic' ? `<div class="page"><div class="cover"><div class="cover-title">${safe}</div><div class="cover-meta">Nyx Agent · ${date}</div></div></div>` : `<div class="page"><h1 class="doc-title">${safe}</h1><div class="doc-meta">Dibuat oleh Nyx Agent · ${date}</div></div>`) }
+</div>
+</body>
+</html>`
 }

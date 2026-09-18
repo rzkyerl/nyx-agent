@@ -116,7 +116,7 @@ function makePill(src: Source, citeNum: number | null): string {
   const url      = (src.url || '').replace(/"/g, '%22')
   const favicon  = (src.favicon || `https://www.google.com/s2/favicons?domain=${src.domain}&sz=32`).replace(/"/g, '%22')
   const citeAttr = citeNum != null ? ` data-cite="${citeNum}"` : ''
-  return `<a class="md-cite" href="${url}" target="_blank" rel="noopener noreferrer"${citeAttr} data-favicon="${favicon}"><span class="md-cite-icon">${letter}</span><span class="md-cite-domain">${domain}</span></a>`
+  return `<a class="md-cite" href="${url}" target="_blank" rel="noopener noreferrer"${citeAttr} data-favicon="${favicon}"><span class="md-cite-icon" style="background-image:url('${favicon}')">${letter}</span><span class="md-cite-domain">${domain}</span></a>`
 }
 
 function injectCitations(html: string, sourceMap: ReturnType<typeof buildSourceMap>): string {

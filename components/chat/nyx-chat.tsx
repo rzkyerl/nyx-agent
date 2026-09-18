@@ -44,6 +44,7 @@ export function NyxChat() {
   const [isSearching, setIsSearching]     = useState(false)
   const [searchDone, setSearchDone]       = useState(false)
   const [searchQuery, setSearchQuery]     = useState('')
+  const [activeSkillNames, setActiveSkillNames] = useState<string[]>([])
   const [haluWarningMsgId, setHaluWarningMsgId] = useState<string | null>(null)
   const [customProviders, setCustomProviders] = useState<CustomProvider[]>(() => loadCustomProviders())
 
@@ -203,7 +204,7 @@ export function NyxChat() {
     if (!sessionId) { const s = createSession(); sessionId = s.id }
 
     setModelUnavailable(null); setIsSearching(false); setSearchDone(false)
-    setSearchQuery(''); setHaluWarningMsgId(null)
+    setSearchQuery(''); setActiveSkillNames(options.skills.map(skill => skill.name)); setHaluWarningMsgId(null)
 
     const priorMessages = priorMessagesOverride || activeSessionRef.current?.messages || []
     const apiMessages = buildApiMessages([
@@ -237,8 +238,12 @@ export function NyxChat() {
           updateMessage(sessionId!, aiMsg.id, accumulated)
         },
         onModelUsed: (_model, _provider) => { /* could show in UI if needed */ },
-        onSearchStart: (q) => { setSearchQuery(q); setIsSearching(true); setSearchDone(false) },
-        onSearchDone:  (_n) => { setIsSearching(false); setSearchDone(true) },
+        onSearchStart: (q) => {
+          setSearchQuery(q); setIsSearching(true); setSearchDone(false)
+        },
+        onSearchDone:  (_n) => {
+          setIsSearching(false); setSearchDone(true)
+        },
         onSources: (sources: SourceItem[]) => {
           updateMessage(sessionId!, aiMsg.id, null, { sources })
         },
@@ -270,7 +275,7 @@ export function NyxChat() {
         if (accumulated === '') updateMessage(sessionId!, aiMsg.id, null, { failed: true })
       }
     } finally {
-      setIsGenerating(false); setIsSearching(false); setSearchDone(false)
+      setIsGenerating(false); setIsSearching(false); setSearchDone(false); setActiveSkillNames([])
       abortRef.current = null
     }
   }, [activeId, createSession, addMessage, updateMessage, setIsGenerating, abortRef, selectedModelId, customProviders, renameSession, generateTitle])
@@ -288,7 +293,7 @@ export function NyxChat() {
   /* ── Stop ── */
   const handleStop = useCallback(() => {
     abortRef.current?.abort()
-    setIsGenerating(false); setIsSearching(false); setSearchDone(false)
+    setIsGenerating(false); setIsSearching(false); setSearchDone(false); setActiveSkillNames([])
   }, [abortRef, setIsGenerating])
 
   /* ── Apply theme ── */
@@ -341,6 +346,7 @@ export function NyxChat() {
           isSearching={isSearching}
           searchDone={searchDone}
           searchQuery={searchQuery}
+          activeSkillNames={activeSkillNames}
           haluWarningMsgId={haluWarningMsgId}
           onSuggestionClick={handleSend}
           onRegenerate={(msg) => handleSend(msg.content)}

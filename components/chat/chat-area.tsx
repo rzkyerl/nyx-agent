@@ -16,6 +16,7 @@ interface ChatAreaProps {
   isSearching:    boolean
   searchDone:     boolean
   searchQuery:    string
+  activeSkillNames?: string[]
   haluWarningMsgId: string | null
   onSuggestionClick: (prompt: string) => void
   onRegenerate?:  (msg: ChatMessage) => void
@@ -29,7 +30,7 @@ interface ChatAreaProps {
 }
 
 export function ChatArea({
-  messages, isGenerating, isSearching, searchDone, searchQuery,
+  messages, isGenerating, isSearching, searchDone, searchQuery, activeSkillNames = [],
   haluWarningMsgId, onSuggestionClick,
   onRegenerate, onRetryAssistant, onEdit, onLike, onDislike, onShare, toolbar,
   hasExperimentalModel = false,
@@ -42,7 +43,7 @@ export function ChatArea({
   const [indicatorVisible, setIndicatorVisible] = useState(false)
   const [indicatorLeaving, setIndicatorLeaving] = useState(false)
 
-  const showSearchIndicator = isSearching || searchDone
+  const showSearchIndicator = searchDone && !isSearching
 
   useEffect(() => {
     if (showSearchIndicator) {
@@ -116,6 +117,8 @@ export function ChatArea({
               key={msg.id}
               message={msg}
               isGenerating={isGenerating}
+              isSearching={isSearching}
+              activeSkillNames={activeSkillNames}
               isLastUser={i === lastUserMsgIndex && !isGenerating}
               isStreaming={isGenerating && i === lastAiMsgIndex}
               showHaluWarning={haluWarningMsgId === msg.id}
@@ -128,12 +131,14 @@ export function ChatArea({
             />
           ))}
 
-          {indicatorVisible && (
-            <SearchIndicator
-              query={searchQuery}
-              done={searchDone && !isSearching}
-              leaving={indicatorLeaving}
-            />
+          {indicatorVisible && !isSearching && (
+            <div className={['-mt-1 self-start transition-all duration-200 ease-out', indicatorLeaving ? 'opacity-0 translate-y-[-1px]' : 'opacity-100 translate-y-0'].join(' ')}>
+              <SearchIndicator
+                query={searchQuery}
+                done={searchDone && !isSearching}
+                leaving={indicatorLeaving}
+              />
+            </div>
           )}
         </div>
       </div>
@@ -143,34 +148,20 @@ export function ChatArea({
 
 // ── Search indicator ──────────────────────────────
 function SearchIndicator({ query, done, leaving }: { query: string; done: boolean; leaving: boolean }) {
+  if (done) return null
+
   return (
     <div
       className={[
-        'flex w-fit max-w-full items-center gap-2.5 rounded-full border border-border/70 bg-card/80 px-3 py-1.5 text-xs text-muted-foreground shadow-sm backdrop-blur-sm transition-all duration-300',
+        'flex w-fit max-w-full items-center gap-2 text-sm text-muted-foreground transition-opacity duration-200 ease-out',
         leaving ? 'opacity-0' : 'opacity-100',
       ].join(' ')}
     >
-      {done ? (
-        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-          <Check size={12} strokeWidth={2.5} />
-        </span>
-      ) : (
-        <span className="relative flex h-5 w-5 items-center justify-center rounded-full bg-sky-500/15 text-sky-600 dark:text-sky-400">
-          <Globe2 size={12} className="animate-[spin_3s_linear_infinite]" />
-          <span className="absolute inset-0 rounded-full border border-sky-500/30 animate-ping" />
-        </span>
-      )}
-      <span className="min-w-0 truncate">
-        <span className="font-medium text-foreground">{done ? 'Web results found' : 'Searching the web'}</span>
-        {!done && query && <span className="ml-1.5 text-muted-foreground">for “{query}”</span>}
-      </span>
-      {!done && (
-        <span className="flex shrink-0 items-center gap-0.5">
-          {[0,1,2].map(i => (
-            <span key={i} className="inline-block h-1 w-1 rounded-full bg-sky-500 animate-pulse" style={{ animationDelay: `${i * 0.18}s` }} />
-          ))}
-        </span>
-      )}
+      <div className="flex items-center gap-2 text-foreground/80">
+        <Globe2 size={14} className="animate-[spin_2.8s_linear_infinite]" />
+        <span className="font-medium text-foreground">Searching the web</span>
+        {query && <span className="text-muted-foreground">“{query}”</span>}
+      </div>
     </div>
   )
 }

@@ -106,10 +106,18 @@ export async function streamChatCompletion(params: StreamChatParams): Promise<st
         if (json.type === 'searching' && json.query) { onSearchStart?.(json.query); continue }
         if (json.type === 'search_done')              { onSearchDone?.(json.resultsCount || 0); continue }
         if (json.type === 'sources' && Array.isArray(json.sources)) {
-          const enriched: SourceItem[] = json.sources.map((s: { index: number; title: string; url: string; domain: string }) => ({
-            ...s,
-            favicon: s.domain ? `https://www.google.com/s2/favicons?domain=${s.domain}&sz=32` : '',
-          }))
+          const enriched: SourceItem[] = json.sources.map((s: { index: number; title: string; url: string; domain?: string }) => {
+            const url = s.url || ''
+            let domain = s.domain || ''
+            if (!domain && url) {
+              try { domain = new URL(url).hostname.replace(/^www\./, '') } catch { domain = '' }
+            }
+            return {
+              ...s,
+              domain,
+              favicon: domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32` : '',
+            }
+          })
           onSources?.(enriched)
           continue
         }
