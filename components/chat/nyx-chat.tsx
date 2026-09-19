@@ -10,7 +10,8 @@ import { Menu, Trash2, ChevronDown, Share2, FileText, Pin, Edit3 } from 'lucide-
 import { Sidebar }       from './sidebar'
 import { ChatArea }      from './chat-area'
 import { Composer }      from './composer'
-import { SettingsPanel } from './settings-panel'
+import { SettingsPanel }  from './settings-panel'
+import { WelcomeModal }  from './welcome-modal'
 import { useChatSession } from '@/hooks/use-chat-session'
 import { streamChatCompletion, buildApiMessages, detectHallucinationWarning } from '@/hooks/use-stream-chat'
 import { NIM_MODELS } from '@/lib/models'
@@ -47,6 +48,7 @@ export function NyxChat() {
   const [activeSkillNames, setActiveSkillNames] = useState<string[]>([])
   const [haluWarningMsgId, setHaluWarningMsgId] = useState<string | null>(null)
   const [customProviders, setCustomProviders] = useState<CustomProvider[]>(() => loadCustomProviders())
+  const [showWelcome, setShowWelcome]         = useState(false)
 
   const titleMenuRef      = useRef<HTMLDivElement>(null)
   const titleInputRef     = useRef<HTMLInputElement>(null)
@@ -301,6 +303,21 @@ export function NyxChat() {
     document.documentElement.classList.toggle('dark', settings.theme === 'dark')
   }, [settings.theme])
 
+  /* ── Welcome modal ────────────────────────────────
+     - Muncul tiap kunjungan jika user belum centang "Don't show again"
+     - Jika sudah centang (hasSeenWelcome: true), tidak muncul lagi
+     - Guard showWelcome mencegah modal muncul ulang dalam sesi yang sama
+       setelah ditutup tanpa centang
+  ── */
+  useEffect(() => {
+    if (hydrated && !settings.hasSeenWelcome && !showWelcome) {
+      setShowWelcome(true)
+    }
+    // showWelcome sengaja tidak masuk deps — hanya ingin effect ini
+    // re-run saat hydration selesai atau status hasSeenWelcome berubah.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, settings.hasSeenWelcome])
+
   if (!hydrated) return null // avoid hydration mismatch
 
   return (
@@ -511,6 +528,16 @@ export function NyxChat() {
           onClose={() => setSettingsOpen(false)}
           onUpdate={updateSettings}
           onClearAll={clearAll}
+        />
+      )}
+
+      {/* Welcome modal — ditampilkan sekali saat pertama kali masuk */}
+      {showWelcome && (
+        <WelcomeModal
+          onClose={(dontShowAgain) => {
+            setShowWelcome(false)
+            if (dontShowAgain) updateSettings({ hasSeenWelcome: true })
+          }}
         />
       )}
     </div>

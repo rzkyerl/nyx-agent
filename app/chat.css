@@ -66,6 +66,31 @@
   background-clip: padding-box;
 }
 
+/* ── Welcome modal scrollbar ─────────────────────── */
+.welcome-modal-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+  overscroll-behavior: contain;
+}
+
+.welcome-modal-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+.welcome-modal-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.welcome-modal-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 999px;
+}
+
+.welcome-modal-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--color-muted-foreground);
+}
+
 /* ── Document dropdown scrollbar ─────────────────── */
 .document-select-scrollbar {
   scrollbar-width: thin;

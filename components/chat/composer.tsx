@@ -6,7 +6,7 @@
 ═══════════════════════════════════════════════════ */
 
 import { useRef, useEffect, useCallback, useState } from 'react'
-import { Paperclip, Plus, ArrowUp, Square, X, ChevronDown, Check, ChevronRight, Blocks, WandSparkles, Globe, BrainCircuit, Trash2, Settings2, RefreshCw, CircleCheck, CircleX, CircleDashed, Pencil } from 'lucide-react'
+import { Paperclip, Plus, ArrowUp, Square, X, ChevronDown, Check, ChevronRight, Blocks, WandSparkles, Globe, BrainCircuit, Trash2, Settings2, RefreshCw, CircleCheck, CircleX, CircleDashed, Pencil, Network, Info } from 'lucide-react'
 import { FILE_CONFIG, getFileIcon, formatFileSize, processFile } from '@/lib/file-utils'
 import { saveCustomProviders, type ChatFile, type CustomProvider } from '@/lib/storage'
 import type { NyxModel } from '@/lib/models'
@@ -719,6 +719,15 @@ export function Composer({
                 })}
               </div>
               <div className="mt-5 border-t border-border pt-4">
+                    <div className="mb-3 flex gap-2.5 rounded-xl border border-blue-500/20 bg-blue-500/5 px-3.5 py-3 text-[11px] leading-relaxed text-blue-700 dark:text-blue-400">
+                      <Network size={13} className="mt-0.5 shrink-0" />
+                      <span>
+                        <strong className="font-semibold">Using a local provider?</strong> Your server must be reachable via HTTPS.
+                        Use <strong className="font-medium">Tailscale Funnel</strong> (<code className="rounded bg-blue-500/10 px-1">tailscale funnel 11434</code>),{' '}
+                        <strong className="font-medium">ngrok</strong> (<code className="rounded bg-blue-500/10 px-1">ngrok http 11434</code>),
+                        or <strong className="font-medium">Cloudflare Tunnel</strong> to expose your endpoint, then paste the HTTPS URL below.
+                      </span>
+                    </div>
                     <button onClick={() => { setEditingProviderId(null); setCustomProviderFormOpen(open => !open) }} className="flex w-full items-center gap-3 rounded-xl border border-dashed border-border px-3 py-3 text-left transition-colors hover:bg-muted">
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground"><Plus size={16} /></span>
                   <span className="min-w-0 flex-1">

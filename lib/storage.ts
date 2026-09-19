@@ -79,12 +79,14 @@ export interface ChatSettings {
   theme: 'dark' | 'light'
   enterToSend: boolean
   selectedModel: string
+  hasSeenWelcome?: boolean
 }
 
 export const DEFAULT_SETTINGS: ChatSettings = {
-  theme:         'dark',
-  enterToSend:   true,
-  selectedModel: 'auto',
+  theme:           'dark',
+  enterToSend:     true,
+  selectedModel:   'auto',
+  hasSeenWelcome:  false,
 }
 
 // ── ID generation ──────────────────────────────────

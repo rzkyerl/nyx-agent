@@ -311,53 +311,26 @@ export function Message({
 
         {/* Generated document download card */}
         {isAI && exportConfig && !isStreaming && (
-          <div className="grid w-full max-w-xl grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-3 rounded-2xl border border-border bg-muted/40 p-3 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-background text-primary shadow-sm ring-1 ring-border/60">
-              <FileDown size={18} strokeWidth={1.8} />
-            </div>
-            <button
-              type="button"
-              onClick={openPreview}
-              className="min-w-0 text-left sm:flex-1"
-              title="Preview document"
-            >
-              <p className="truncate text-[13px] font-semibold leading-5 text-foreground" title={exportConfig.title}>
-                {exportConfig.title}
-              </p>
-              <p className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-                {exportConfig.type} document
-              </p>
-            </button>
-            <div className="col-span-2 grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-2 sm:col-span-1 sm:ml-auto sm:flex sm:flex-nowrap">
-              {exportConfig.type === 'pdf' && <DocumentSelect
-                value={selectedTemplate}
-                onChange={value => setSelectedTemplate(value as ExportTemplate)}
-                label="Template"
-                options={[
-                  { value: 'auto', label: 'Auto' },
-                  { value: 'academic', label: 'Academic' },
-                  { value: 'formal', label: 'Formal' },
-                  { value: 'informal', label: 'Informal' },
-                ]}
-                className="sm:w-28"
-              />}
-              {exportConfig.type === 'pdf' && <DocumentSelect
-                value={selectedFont}
-                onChange={value => setSelectedFont(value as ExportFont)}
-                label="Font"
-                options={[
-                  { value: 'auto', label: 'Auto' },
-                  { value: 'Inter', label: 'Inter' },
-                  { value: 'Lora', label: 'Lora' },
-                  { value: 'Playfair Display', label: 'Playfair' },
-                  { value: 'Merriweather', label: 'Merriweather' },
-                  { value: 'Roboto', label: 'Roboto' },
-                  { value: 'Open Sans', label: 'Open Sans' },
-                  { value: 'Montserrat', label: 'Montserrat' },
-                  { value: 'Source Sans 3', label: 'Source Sans 3' },
-                ]}
-                className="sm:w-32"
-              />}
+          <div className="w-full max-w-xl rounded-2xl border border-border bg-muted/40 p-3">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-background text-primary shadow-sm ring-1 ring-border/60">
+                <FileDown size={18} strokeWidth={1.8} />
+              </div>
+
+              <button
+                type="button"
+                onClick={openPreview}
+                className="min-w-0 flex-1 text-left"
+                title="Preview document"
+              >
+                <p className="truncate text-[13px] font-semibold leading-5 text-foreground" title={exportConfig.title}>
+                  {exportConfig.title}
+                </p>
+                <p className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                  {exportConfig.type} document
+                </p>
+              </button>
+
               <button
                 type="button"
                 onClick={handleExport}
@@ -367,6 +340,40 @@ export function Message({
                 {exportLoading ? 'Generating…' : exportDone ? 'Downloaded' : exportError ? 'Retry' : 'Download'}
               </button>
             </div>
+
+            {exportConfig.type === 'pdf' && (
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <DocumentSelect
+                  value={selectedTemplate}
+                  onChange={value => setSelectedTemplate(value as ExportTemplate)}
+                  label="Template"
+                  options={[
+                    { value: 'auto', label: 'Auto' },
+                    { value: 'academic', label: 'Academic' },
+                    { value: 'formal', label: 'Formal' },
+                    { value: 'informal', label: 'Informal' },
+                  ]}
+                  className="w-full"
+                />
+                <DocumentSelect
+                  value={selectedFont}
+                  onChange={value => setSelectedFont(value as ExportFont)}
+                  label="Font"
+                  options={[
+                    { value: 'auto', label: 'Auto' },
+                    { value: 'Inter', label: 'Inter' },
+                    { value: 'Lora', label: 'Lora' },
+                    { value: 'Playfair Display', label: 'Playfair' },
+                    { value: 'Merriweather', label: 'Merriweather' },
+                    { value: 'Roboto', label: 'Roboto' },
+                    { value: 'Open Sans', label: 'Open Sans' },
+                    { value: 'Montserrat', label: 'Montserrat' },
+                    { value: 'Source Sans 3', label: 'Source Sans 3' },
+                  ]}
+                  className="w-full"
+                />
+              </div>
+            )}
           </div>
         )}
 
