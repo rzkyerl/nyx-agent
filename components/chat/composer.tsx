@@ -143,15 +143,18 @@ export function Composer({
 
   const checkCustomApiKey = async () => {
     const { baseUrl, apiKey, directConnection } = customProviderForm
-    if (!baseUrl.trim() || !apiKey.trim()) {
-      setApiKeyCheck({ status: 'invalid', message: 'Enter a base URL and API key first.' })
+    if (!baseUrl.trim()) {
+      setApiKeyCheck({ status: 'invalid', message: 'Enter a base URL first.' })
       return
     }
     setApiKeyCheck({ status: 'checking' })
     try {
-      const endpoint = `${baseUrl.trim().replace(/\/$/, '')}${baseUrl.trim().endsWith('/v1') ? '/models' : '/v1/models'}`
+      const normalizedBase = baseUrl.trim().replace(/\/$/, '')
+      const endpoint = `${normalizedBase}${normalizedBase.endsWith('/v1') ? '/models' : '/v1/models'}`
+      const directHeaders: Record<string, string> = {}
+      if (apiKey.trim()) directHeaders['Authorization'] = `Bearer ${apiKey.trim()}`
       const response = directConnection
-        ? await fetch(endpoint, { headers: { Authorization: `Bearer ${apiKey.trim()}` }, signal: AbortSignal.timeout(7000) })
+        ? await fetch(endpoint, { headers: directHeaders, signal: AbortSignal.timeout(15000) })
         : await fetch('/api/providers/validate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -169,10 +172,15 @@ export function Composer({
         setSelectedDiscoveredModels(data.models.map(model => model.id))
       }
       setApiKeyCheck(data.valid || (directConnection && response.ok)
-        ? { status: 'valid', message: 'API key is valid.' }
-        : { status: 'invalid', message: data.message || `Provider rejected the key (${response.status}).` })
-    } catch {
-      setApiKeyCheck({ status: 'invalid', message: directConnection ? 'Could not reach the provider from this browser.' : 'Could not reach the validation service.' })
+        ? { status: 'valid', message: 'Provider is reachable.' }
+        : { status: 'invalid', message: data.message || `Provider returned ${response.status}.` })
+    } catch (err) {
+      const e = err as Error
+      let msg = directConnection
+        ? 'Could not reach the provider from this browser. Make sure the tunnel is running and allows CORS.'
+        : 'Could not reach the provider.'
+      if (e.name === 'TimeoutError') msg = 'Request timed out (15 s). Is the tunnel active?'
+      setApiKeyCheck({ status: 'invalid', message: msg })
     }
   }
 

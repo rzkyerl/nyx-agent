@@ -47,7 +47,8 @@ async function checkModel(id: string, customProviders: NonNullable<HealthRequest
   const customProvider = provider.startsWith('custom:') ? customProviders.find(item => item.id === provider.slice(7)) : undefined
   if (customProvider?.directConnection) return { id, status: 'not-configured', message: 'Use direct connection from the browser' }
   const key = customProvider?.apiKey || providerKey(provider)
-  if (!key) return { id, status: 'not-configured', message: `${provider} is not configured` }
+  // Built-in providers require a key; custom providers (Ollama-style) may not
+  if (!key && !customProvider) return { id, status: 'not-configured', message: `${provider} is not configured` }
 
   const started = Date.now()
   try {
