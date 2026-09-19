@@ -18,6 +18,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning className={cn(fontSans.variable, fontMono.variable, 'antialiased')}>
+      <head>
+        {/* Prevent iOS Safari from zooming in when focusing inputs */}
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+      </head>
       <body className="bg-background text-foreground">
         {children}
       </body>

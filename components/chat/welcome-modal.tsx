@@ -91,8 +91,8 @@ export function WelcomeModal({ onClose }: WelcomeModalProps) {
           <Image
             src="/images/nyx-agent/logo-agent-chat.png"
             alt="Nyx Agent"
-            width={64}
-            height={64}
+            width={96}
+            height={96}
             className="rounded-xl"
             priority
           />

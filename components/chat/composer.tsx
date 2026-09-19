@@ -468,7 +468,7 @@ export function Composer({
           )}
           <textarea
             ref={textareaRef}
-            className="composer-textarea-scrollbar relative z-10 w-full resize-none bg-transparent px-4 pt-3 pb-2 text-sm leading-normal text-foreground placeholder:text-muted-foreground focus:outline-none"
+            className="composer-textarea-scrollbar relative z-10 w-full resize-none bg-transparent px-4 pt-3 pb-2 text-base sm:text-sm leading-normal text-foreground placeholder:text-muted-foreground focus:outline-none"
             placeholder="Build anything…"
             value={value}
             spellCheck={false}

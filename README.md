@@ -10,6 +10,7 @@
     <a href="https://github.com/rzkyerl/nyx-agent/issues"><img src="https://img.shields.io/github/issues/rzkyerl/nyx-agent?style=flat-square" alt="Issues" /></a>
     <img src="https://img.shields.io/badge/Next.js-16.2.6-black?style=flat-square&logo=next.js" alt="Next.js" />
     <img src="https://img.shields.io/badge/React-19-61DAFB?style=flat-square&logo=react" alt="React" />
+    <a href="https://chat.ctrl-build.my.id"><img src="https://img.shields.io/badge/demo-live-brightgreen?style=flat-square" alt="Live Demo" /></a>
   </p>
 </div>
 
@@ -63,6 +64,14 @@ Built by [CTRL Build](https://github.com/rzkyerl).
 | **Custom** | Any OpenAI-compatible model | Base URL + API key stored in-browser |
 
 You only need to configure the providers you want to use. At least one API key (or Ollama URL) is required.
+
+---
+
+## Try It Live
+
+Want to test Nyx Agent without setting anything up? A hosted instance is available at:
+
+**[https://chat.ctrl-build.my.id](https://chat.ctrl-build.my.id)**
 
 ---
 
@@ -261,6 +270,6 @@ MIT see [LICENSE](LICENSE) for details.
 ---
 
 <div align="center">
-  <p>Made with ♥ by <a href="https://github.com/rzkyerl">CTRL Build</a></p>
-  <p>If this project helps you, consider giving it a ⭐</p>
+  <p>Made with by <a href="https://github.com/rzkyerl">CTRL Build</a></p>
+  <p>If this project helps you, consider giving it a Star</p>
 </div>
