@@ -173,11 +173,16 @@ async function registerLocalFont(
 
   try {
     const { existsSync } = await import('fs')
-    const { resolve } = await import('path')
-    const regularPath = resolve(process.cwd(), paths.regular)
-    const boldPath    = resolve(process.cwd(), paths.bold)
+    const { resolve, join } = await import('path')
+    // process.cwd() on Vercel is /var/task which is the project root
+    // public/ is deployed alongside the app at /var/task/public/
+    const cwd = process.cwd()
+    const regularPath = join(cwd, paths.regular)
+    const boldPath    = join(cwd, paths.bold)
 
-    if (!existsSync(regularPath)) throw new Error(`Font file not found: ${regularPath}`)
+    if (!existsSync(regularPath)) {
+      throw new Error(`Font file not found at ${regularPath} (cwd: ${cwd}). Available: ${require('fs').readdirSync(join(cwd, 'public/fonts')).join(', ')}`)
+    }
 
     Font.register({ family, src: regularPath, fontWeight: 'normal' })
     if (existsSync(boldPath)) {
