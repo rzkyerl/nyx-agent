@@ -6,7 +6,7 @@
 ═══════════════════════════════════════════════════ */
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import { Copy, RefreshCw, Check, ThumbsUp, ThumbsDown, Share2, FileDown, X, PanelRightClose, PanelRightOpen, GripVertical, Pencil, ChevronDown } from 'lucide-react'
+import { Copy, RefreshCw, Check, ThumbsUp, ThumbsDown, Share2, FileDown, Eye, X, PanelRightClose, PanelRightOpen, GripVertical, Pencil, ChevronDown } from 'lucide-react'
 import { MarkdownRenderer } from './markdown-renderer'
 import { SourcesPanel }     from './sources-panel'
 import { parseSources }     from '@/lib/parse-sources'
@@ -331,14 +331,25 @@ export function Message({
                 </p>
               </button>
 
-              <button
-                type="button"
-                onClick={handleExport}
-                disabled={exportLoading}
-                className="h-9 shrink-0 rounded-lg bg-foreground px-3.5 text-xs font-semibold text-background transition-opacity hover:opacity-85 disabled:cursor-wait disabled:opacity-60"
-              >
-                {exportLoading ? 'Generating…' : exportDone ? 'Downloaded' : exportError ? 'Retry' : 'Download'}
-              </button>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={openPreview}
+                  className="flex h-9 items-center gap-1.5 rounded-lg border border-border bg-background px-3 text-xs font-semibold text-foreground transition-colors hover:bg-muted"
+                  title="Preview document"
+                >
+                  <Eye size={14} />
+                  Preview
+                </button>
+                <button
+                  type="button"
+                  onClick={handleExport}
+                  disabled={exportLoading}
+                  className="h-9 rounded-lg bg-foreground px-3.5 text-xs font-semibold text-background transition-opacity hover:opacity-85 disabled:cursor-wait disabled:opacity-60"
+                >
+                  {exportLoading ? 'Generating…' : exportDone ? 'Downloaded' : exportError ? 'Retry' : 'Download'}
+                </button>
+              </div>
             </div>
 
             {exportConfig.type === 'pdf' && (

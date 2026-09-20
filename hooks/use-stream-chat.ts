@@ -10,6 +10,56 @@ import type { InstalledSkill } from '@/lib/skills'
 import type { CustomProvider } from '@/lib/storage'
 import { buildSystemPrompt } from '@/lib/system-prompt'
 
+// ── Client-side web search helpers (used for direct connection mode) ──────────
+
+const SEARCH_DETECT_PATTERNS = [
+  /\b(hari ini|sekarang|terbaru|terkini|saat ini|berita|harga|cuaca|jadwal)\b/i,
+  /\b(today|now|latest|current|recent|news|price|weather|score|election|winner)\b/i,
+  /\b(berapa harga|berapa kurs|siapa yang menang|kapan rilis|apa yang terjadi)\b/i,
+  /\b(what is the latest|who won|when did|what happened|stock price|exchange rate)\b/i,
+]
+
+function clientDetectSearchNeed(text: string): string | null {
+  const trimmed = text.trim()
+  if (!trimmed || trimmed.length < 8) return null
+  if (SEARCH_DETECT_PATTERNS.some(re => re.test(trimmed))) return trimmed.slice(0, 200)
+  return null
+}
+
+interface ClientSearchResult {
+  title: string
+  url: string
+  snippet: string
+  date?: string
+}
+
+async function clientFetchSearch(query: string, signal?: AbortSignal): Promise<ClientSearchResult[]> {
+  try {
+    const res = await fetch('/api/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+      signal,
+    })
+    if (!res.ok) return []
+    const data = await res.json() as { results?: ClientSearchResult[] }
+    return data.results || []
+  } catch {
+    return []
+  }
+}
+
+function clientFormatSearchContext(query: string, results: ClientSearchResult[]): string {
+  if (!results.length) {
+    return `[Tool Result — web_search]\nQuery: "${query}"\n\nNo results found.\n\n[End of search results]`
+  }
+  const lines = results.map((r, i) => {
+    const dateStr = r.date ? ` — ${r.date}` : ''
+    return `${i + 1}. ${r.title}\n   URL: ${r.url}${dateStr}\n   ${r.snippet}`
+  })
+  return `[Web Search Results — MUST cite source numbers [1], [2], etc. for every claim]\nQuery: "${query}"\n\n${lines.join('\n\n')}\n\n[End of search results — cite sources using [1], [2], etc.]\n\nIMPORTANT: The dates shown next to search results are the publication dates of those articles/pages, NOT today's date. Always use the current date from the system prompt above when referring to "today".`
+}
+
 interface StreamChatParams {
   messages:            Array<{ role: string; content: unknown }>
   model?:              string
@@ -21,6 +71,7 @@ interface StreamChatParams {
   webSearch?:          boolean
   skills?:             InstalledSkill[]
   customProviders?:    CustomProvider[]
+  memory?:             string
   onToken:             (chunk: string) => void
   onModelUsed?:        (model: string, provider: string) => void
   onSearchStart?:      (query: string) => void
@@ -32,7 +83,7 @@ interface StreamChatParams {
 export async function streamChatCompletion(params: StreamChatParams): Promise<string> {
   const {
     messages, model = 'auto', maxTokens = 1024, temperature = 0.2,
-    seed = 0, sessionId, signal, webSearch = false, skills = [], customProviders = [],
+    seed = 0, sessionId, signal, webSearch = false, skills = [], customProviders = [], memory = '',
     onToken, onModelUsed, onSearchStart, onSearchDone, onSources, onModelUnavailable,
   } = params
 
@@ -46,9 +97,66 @@ export async function streamChatCompletion(params: StreamChatParams): Promise<st
   const customEndpoint = customBaseUrl.endsWith('/chat/completions')
     ? customBaseUrl
     : `${customBaseUrl}${customBaseUrl.endsWith('/v1') ? '/chat/completions' : '/v1/chat/completions'}`
-  const requestMessages = directConnection
-    ? [{ role: 'system', content: buildSystemPrompt(customModelId, customProvider?.name || 'Custom Provider') }, ...messages]
-    : messages
+
+  // ── Client-side web search for direct connection mode ──────────────────────
+  let directSearchResults: ClientSearchResult[] = []
+  let directSearchQuery: string | null = null
+
+  if (directConnection) {
+    const lastUserText = (() => {
+      const last = [...messages].reverse().find(m => m.role === 'user')
+      if (!last) return ''
+      const c = last.content
+      if (typeof c === 'string') return c
+      if (Array.isArray(c)) {
+        return (c as Array<{ type?: string; text?: string }>)
+          .filter(p => p.type === 'text' && !p.text?.startsWith('--- File:'))
+          .map(p => p.text || '')
+          .join(' ')
+          .trim()
+      }
+      return ''
+    })()
+
+    const searchQuery = webSearch
+      ? lastUserText.slice(0, 200)
+      : clientDetectSearchNeed(lastUserText)
+
+    if (searchQuery) {
+      directSearchQuery = searchQuery
+      onSearchStart?.(searchQuery)
+      directSearchResults = await clientFetchSearch(searchQuery, signal)
+      onSearchDone?.(directSearchResults.length)
+
+      if (directSearchResults.length > 0) {
+        const enrichedSources: SourceItem[] = directSearchResults.slice(0, 8).map((r, i) => {
+          let domain = ''
+          try { domain = new URL(r.url).hostname.replace(/^www\./, '') } catch { domain = '' }
+          return {
+            index: i + 1,
+            title: r.title,
+            url: r.url,
+            domain,
+            favicon: domain ? `https://www.google.com/s2/favicons?domain=${domain}&sz=32` : '',
+          }
+        })
+        onSources?.(enrichedSources)
+      }
+    }
+  }
+
+  // ── Build final messages for direct connection ─────────────────────────────
+  let requestMessages: Array<{ role: string; content: unknown }>
+  if (directConnection) {
+    const systemContent = buildSystemPrompt(customModelId, customProvider?.name || 'Custom Provider', memory)
+    const systemWithSearch = directSearchQuery && directSearchResults.length > 0
+      ? systemContent + '\n\n' + clientFormatSearchContext(directSearchQuery, directSearchResults)
+      : systemContent
+    requestMessages = [{ role: 'system', content: systemWithSearch }, ...messages]
+  } else {
+    requestMessages = messages
+  }
+
   const response = await fetch(directConnection ? customEndpoint : '/api/chat', {
     method: 'POST',
     headers: {
@@ -64,6 +172,7 @@ export async function streamChatCompletion(params: StreamChatParams): Promise<st
       seed,
       stream:      true,
       ...(directConnection ? {} : { sessionId, webSearch, skills, customProviders }),
+      ...(memory.trim() ? { memory } : {}),
       customProviders,
     }),
     signal,

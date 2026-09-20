@@ -171,6 +171,29 @@ export function NyxChat() {
     } catch { return null }
   }, [customProviders, selectedModelId])
 
+  /* ── Update memory via AI (background, fire-and-forget) ── */
+  const updateMemory = useCallback(async (userMessage: string, assistantReply: string) => {
+    if (!settings.memoryEnabled) return
+    try {
+      const resp = await fetch('/api/memory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userMessage,
+          assistantReply,
+          currentMemory: settings.memory,
+          model: selectedModelId,
+          customProviders,
+        }),
+      })
+      if (!resp.ok) return
+      const data = await resp.json() as { memory?: string }
+      if (typeof data.memory === 'string' && data.memory !== settings.memory) {
+        updateSettings({ memory: data.memory })
+      }
+    } catch { /* silent — memory update is non-critical */ }
+  }, [settings.memoryEnabled, settings.memory, selectedModelId, customProviders, updateSettings])
+
   /* ── New chat ── */
   const handleNewChat = useCallback(() => {
     setModelUnavailable(null)
@@ -234,6 +257,7 @@ export function NyxChat() {
         customProviders,
         webSearch:   options.webSearch,
         skills:      options.skills,
+        memory:      settings.memoryEnabled ? settings.memory : '',
         signal:      controller.signal,
         onToken: (chunk) => {
           accumulated += chunk
@@ -266,6 +290,11 @@ export function NyxChat() {
         const summary = `${text}\n\nAssistant: ${accumulated}`
         generateTitle(summary, sessionId!).then(aiTitle => { if (aiTitle) renameSession(sessionId!, aiTitle) })
       }
+
+      // Auto-update memory in the background (fire-and-forget)
+      if (accumulated && text.trim()) {
+        void updateMemory(text, accumulated)
+      }
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
         const raw = (err as Error).message || ''
@@ -280,7 +309,7 @@ export function NyxChat() {
       setIsGenerating(false); setIsSearching(false); setSearchDone(false); setActiveSkillNames([])
       abortRef.current = null
     }
-  }, [activeId, createSession, addMessage, updateMessage, setIsGenerating, abortRef, selectedModelId, customProviders, renameSession, generateTitle])
+  }, [activeId, createSession, addMessage, updateMessage, setIsGenerating, abortRef, selectedModelId, customProviders, renameSession, generateTitle, updateMemory, settings.memory, settings.memoryEnabled])
 
   const handleEditMessage = useCallback((message: ChatMessage, content: string) => {
     if (!activeId) return
@@ -321,7 +350,7 @@ export function NyxChat() {
   if (!hydrated) return null // avoid hydration mismatch
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-dvh overflow-hidden bg-background">
       {/* Sidebar */}
       <Sidebar
         sessions={sessions}
@@ -489,6 +518,8 @@ export function NyxChat() {
               models={availableModels}
               customProviders={customProviders}
               onCustomProvidersChange={setCustomProviders}
+              memoryEnabled={settings.memoryEnabled}
+              onToggleMemory={enabled => updateSettings({ memoryEnabled: enabled })}
             />
           </div>
         </div>

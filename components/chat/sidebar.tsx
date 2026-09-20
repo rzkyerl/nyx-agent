@@ -28,7 +28,7 @@ export function Sidebar({
   sessions, activeId, collapsed,
   onNewChat, onSwitch, onDelete, onRename, onPin, onShare, onClose, onOpenSettings,
 }: SidebarProps) {
-  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [deleteSession, setDeleteSession] = useState<ChatSession | null>(null)
   const [renamingId, setRenamingId]       = useState<string | null>(null)
   const [renameValue, setRenameValue]     = useState('')
   const [menuSessionId, setMenuSessionId] = useState<string | null>(null)
@@ -71,10 +71,10 @@ export function Sidebar({
     if (e.key === 'Escape') { e.preventDefault(); cancelRename() }
   }
 
-  const handleDelete = (e: React.MouseEvent, id: string) => {
+  const handleDelete = (e: React.MouseEvent, session: ChatSession) => {
     e.stopPropagation()
-    if (confirmDelete === id) { onDelete(id); setConfirmDelete(null) }
-    else setConfirmDelete(id)
+    setMenuSessionId(null)
+    setDeleteSession(session)
   }
 
   return (
@@ -202,9 +202,9 @@ export function Sidebar({
                             Share chat
                           </button>
                           <div className="my-1 border-t border-sidebar-border" />
-                          <button onClick={e => { handleDelete(e, session.id); setMenuSessionId(null) }} className={cn('flex w-full items-center gap-2.5 px-3 py-2 text-sm transition-colors', confirmDelete === session.id ? 'bg-destructive/10 text-destructive' : 'hover:bg-sidebar-accent')}>
-                            <Trash2 size={14} className={confirmDelete === session.id ? 'text-destructive' : 'text-sidebar-foreground/60'} />
-                            {confirmDelete === session.id ? 'Click again to confirm' : 'Delete chat'}
+                          <button onClick={e => handleDelete(e, session)} className="flex w-full items-center gap-2.5 px-3 py-2 text-sm transition-colors hover:bg-sidebar-accent">
+                            <Trash2 size={14} className="text-sidebar-foreground/60" />
+                            Delete chat
                           </button>
                         </div>
                       )}
@@ -227,6 +227,38 @@ export function Sidebar({
           </button>
         </div>
       </aside>
+
+      {deleteSession && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setDeleteSession(null)}
+          role="presentation"
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl border border-border bg-background p-5 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-chat-title"
+          >
+            <h2 id="delete-chat-title" className="text-base font-semibold text-foreground">Delete conversation?</h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              “{deleteSession.title}” will be permanently removed from this device.
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button onClick={() => setDeleteSession(null)} className="rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
+                Cancel
+              </button>
+              <button
+                onClick={() => { onDelete(deleteSession.id); setDeleteSession(null) }}
+                className="rounded-lg bg-destructive px-3 py-2 text-sm font-medium text-destructive-foreground transition-opacity hover:opacity-90"
+              >
+                Delete chat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }

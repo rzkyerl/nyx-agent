@@ -80,6 +80,8 @@ export interface ChatSettings {
   enterToSend: boolean
   selectedModel: string
   hasSeenWelcome?: boolean
+  memoryEnabled: boolean
+  memory: string
 }
 
 export const DEFAULT_SETTINGS: ChatSettings = {
@@ -87,6 +89,8 @@ export const DEFAULT_SETTINGS: ChatSettings = {
   enterToSend:     true,
   selectedModel:   'auto',
   hasSeenWelcome:  false,
+  memoryEnabled:   true,
+  memory:          '',
 }
 
 // ── ID generation ──────────────────────────────────

@@ -24,37 +24,37 @@ interface WelcomeModalProps {
 
 const FEATURES = [
   {
-    icon:  <Sparkles size={16} className="text-violet-400" />,
+    icon:  <Sparkles size={16} className="text-foreground/70" />,
     title: 'Multi-Provider AI',
     desc:  'Auto-fallback across NIM, Groq, and Gemini. Always picks the best available model.',
   },
   {
-    icon:  <Search size={16} className="text-blue-400" />,
+    icon:  <Search size={16} className="text-foreground/70" />,
     title: 'Automatic Web Search',
     desc:  'Detects queries that need up-to-date info and fetches results from the web with inline citations.',
   },
   {
-    icon:  <FileText size={16} className="text-emerald-400" />,
+    icon:  <FileText size={16} className="text-foreground/70" />,
     title: 'File Upload and Analysis',
     desc:  'PDF, Word, Excel, PowerPoint, images, and plain text are processed directly in chat.',
   },
   {
-    icon:  <Zap size={16} className="text-yellow-400" />,
+    icon:  <Zap size={16} className="text-foreground/70" />,
     title: 'Streaming and Markdown',
     desc:  'Responses stream in real-time with full Markdown rendering, tables, and syntax highlighting.',
   },
   {
-    icon:  <Download size={16} className="text-pink-400" />,
+    icon:  <Download size={16} className="text-foreground/70" />,
     title: 'Document Generation',
     desc:  'Export any assistant response as a PDF, Word (.docx), or Excel (.xlsx) file.',
   },
   {
-    icon:  <Cpu size={16} className="text-orange-400" />,
+    icon:  <Cpu size={16} className="text-foreground/70" />,
     title: 'Custom and Local Providers',
     desc:  'Connect any OpenAI-compatible endpoint: LM Studio, vLLM, Ollama, OpenRouter, and more.',
   },
   {
-    icon:  <History size={16} className="text-cyan-400" />,
+    icon:  <History size={16} className="text-foreground/70" />,
     title: 'Persistent Chat History',
     desc:  'Sessions are saved in your browser with support for pinning, renaming, and deleting.',
   },

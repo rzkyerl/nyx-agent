@@ -289,6 +289,7 @@ export async function POST(req: NextRequest) {
     webSearch?:   boolean
     skills?:      Array<{ name?: string; content?: string }>
     customProviders?: CustomProvider[]
+    memory?:      string
   }
 
   const {
@@ -303,6 +304,7 @@ export async function POST(req: NextRequest) {
     webSearch = false,
     skills = [],
     customProviders = [],
+    memory = '',
   } = body
 
   if (!nimKey && !groqKey && !geminiKey && customProviders.length === 0) {
@@ -440,8 +442,8 @@ export async function POST(req: NextRequest) {
       let messagesForAttempt: ApiMessage[]
       if (!hasSystem) {
         const sysPrompt = provider === 'ollama'
-          ? { role: 'system' as const, content: buildOllamaSystemPrompt(tryModel) }
-          : { role: 'system' as const, content: buildSystemPrompt(tryModel, provider) }
+          ? { role: 'system' as const, content: buildOllamaSystemPrompt(tryModel, memory) }
+          : { role: 'system' as const, content: buildSystemPrompt(tryModel, provider, memory) }
 
         if (didSearch && searchResult) {
           const searchContext = formatSearchContext(searchQuery!, searchResult.results as Parameters<typeof formatSearchContext>[1])

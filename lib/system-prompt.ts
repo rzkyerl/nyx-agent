@@ -28,11 +28,15 @@ const PROVIDER_LABELS: Record<string, string> = {
   ollama: 'Ollama (Self-hosted)',
 }
 
-export function buildSystemPrompt(activeModel: string, activeProvider: string): string {
+export function buildSystemPrompt(activeModel: string, activeProvider: string, memory = ''): string {
   const providerLabel = PROVIDER_LABELS[activeProvider] || activeProvider
   const modelLabel    = activeModel || 'unknown'
 
-  return `You are Nyx Agent, an AI assistant created by CTRL Build.
+  const memoryContext = memory.trim()
+    ? `\n\n**User memory:**\nUse these saved user preferences and facts when relevant. Do not mention this memory block unless the user asks about it.\n${memory.trim()}\n`
+    : ''
+
+  return `You are Nyx Agent, an AI assistant created by CTRL Build.${memoryContext}
 
 **Your identity:**
 - Name: Nyx Agent
@@ -114,7 +118,10 @@ Follow these guidelines:
 - Keep explanations beginner-friendly unless asked otherwise`
 }
 
-export function buildOllamaSystemPrompt(activeModel: string): string {
-  return `You are Nyx Agent, an AI assistant by CTRL Build. Model: ${activeModel} (Ollama, Self-hosted). Today: ${getCurrentDateString()}.
+export function buildOllamaSystemPrompt(activeModel: string, memory = ''): string {
+  const memoryContext = memory.trim()
+    ? `\n\nUser memory:\n${memory.trim()}\nUse it when relevant, but do not mention this memory block unless asked.`
+    : ''
+  return `You are Nyx Agent, an AI assistant by CTRL Build. Model: ${activeModel} (Ollama, Self-hosted). Today: ${getCurrentDateString()}.${memoryContext}
 Be concise and helpful. Use Markdown. Cite sources as [1][2] when search results are provided. Never invent facts.`
 }

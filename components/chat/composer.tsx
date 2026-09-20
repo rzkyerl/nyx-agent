@@ -24,6 +24,8 @@ interface ComposerProps {
   models?:         NyxModel[]
   customProviders?: CustomProvider[]
   onCustomProvidersChange?: (providers: CustomProvider[]) => void
+  memoryEnabled?: boolean
+  onToggleMemory?: (enabled: boolean) => void
 }
 
 async function readZipSkill(file: File): Promise<{ name: string; content: string } | null> {
@@ -63,6 +65,7 @@ export function Composer({
   enterToSend = true, selectedModel = 'auto',
   onSelectModel, models = [],
   customProviders = [], onCustomProvidersChange,
+  memoryEnabled = true, onToggleMemory,
 }: ComposerProps) {
   const textareaRef    = useRef<HTMLTextAreaElement>(null)
   const fileInputRef   = useRef<HTMLInputElement>(null)
@@ -504,7 +507,6 @@ export function Composer({
                   <button onClick={() => openFilePicker(FILE_CONFIG.accept)} className="flex min-h-10 w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted">
                     <Paperclip size={15} className="shrink-0 text-muted-foreground" />
                     <span className="flex-1 whitespace-nowrap">Add files or photos</span>
-                    <span className="text-[11px] text-muted-foreground">Ctrl+U</span>
                   </button>
                   <div className="relative" onMouseEnter={() => setSkillsMenuOpen(true)} onMouseLeave={() => setSkillsMenuOpen(false)}>
                     <button
@@ -534,8 +536,8 @@ export function Composer({
                   <button onClick={() => { setWebSearch(search => !search); setFileMenuOpen(false) }} className={cn('flex min-h-10 w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-muted', webSearch ? 'text-foreground' : 'text-foreground')}>
                     <Globe size={15} className="shrink-0 text-muted-foreground" /><span className="flex-1">Web search</span>{webSearch && <Check size={15} className="text-primary" />}
                   </button>
-                  <button onClick={() => setFileMenuOpen(false)} className="flex min-h-10 w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted">
-                    <BrainCircuit size={15} className="shrink-0 text-muted-foreground" /><span>Memory</span><Check size={15} className="text-primary" />
+                  <button onClick={() => { onToggleMemory?.(!memoryEnabled); setFileMenuOpen(false) }} className="flex min-h-10 w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted">
+                    <BrainCircuit size={15} className="shrink-0 text-muted-foreground" /><span className="flex-1">Memory</span>{memoryEnabled && <Check size={15} className="text-primary" />}
                   </button>
                 </div>
               )}

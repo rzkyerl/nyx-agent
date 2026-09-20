@@ -24,8 +24,22 @@ export type ExportFont = 'auto' | 'Inter' | 'Lora' | 'Playfair Display' | 'Merri
 const GOOGLE_FONTS = new Set<Exclude<ExportFont, 'auto'>>([
   'Inter', 'Lora', 'Playfair Display', 'Merriweather', 'Roboto', 'Open Sans', 'Montserrat', 'Source Sans 3',
 ])
-const fontUrlCache = new Map<string, string>()
 const registeredFonts = new Set<string>()
+
+// ── Local font map — files bundled in public/fonts/ ───────────────────────────
+// Keys are font family names as used in @react-pdf/renderer.
+// Each entry provides the path (relative to process.cwd()) for regular and bold.
+// This completely avoids any network calls during PDF generation.
+const LOCAL_FONT_MAP: Record<string, { regular: string; bold: string }> = {
+  'Inter':            { regular: 'public/fonts/Inter-Regular.woff2',            bold: 'public/fonts/Inter-Bold.woff2' },
+  'Lora':             { regular: 'public/fonts/Lora-Regular.woff2',             bold: 'public/fonts/Lora-Bold.woff2' },
+  'Roboto':           { regular: 'public/fonts/Roboto-Regular.woff2',           bold: 'public/fonts/Roboto-Bold.woff2' },
+  'Merriweather':     { regular: 'public/fonts/Merriweather-Regular.woff2',     bold: 'public/fonts/Merriweather-Bold.woff2' },
+  'Open Sans':        { regular: 'public/fonts/OpenSans-Regular.woff2',         bold: 'public/fonts/OpenSans-Bold.woff2' },
+  'Montserrat':       { regular: 'public/fonts/Montserrat-Regular.woff2',       bold: 'public/fonts/Montserrat-Bold.woff2' },
+  'Source Sans 3':    { regular: 'public/fonts/SourceSans3-Regular.woff2',      bold: 'public/fonts/SourceSans3-Bold.woff2' },
+  'Playfair Display': { regular: 'public/fonts/PlayfairDisplay-Regular.woff2',  bold: 'public/fonts/PlayfairDisplay-Bold.woff2' },
+}
 
 interface ExportRequest {
   type:      ExportType
@@ -145,39 +159,35 @@ function resolveFont(font: ExportFont | undefined, template: Exclude<ExportTempl
   return template === 'academic' ? 'Lora' : template === 'formal' ? 'Source Sans 3' : 'Inter'
 }
 
-async function getGoogleFontUrl(family: string, weight = '400'): Promise<string> {
-  const cacheKey = `${family}:${weight}`
-  const cachedUrl = fontUrlCache.get(cacheKey)
-  if (cachedUrl) return cachedUrl
-
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 4000)
-  try {
-    const familyParam = encodeURIComponent(family).replace(/%20/g, '+')
-    const response = await fetch(`https://fonts.googleapis.com/css2?family=${familyParam}:wght@${weight}`, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NyxAgent/1.0)' },
-      signal: controller.signal,
-    })
-    if (!response.ok) throw new Error(`Google Fonts returned ${response.status}`)
-    const css = await response.text()
-    const match = css.match(/url\((https:\/\/fonts\.gstatic\.com\/[^)]+)\)/)
-    if (!match?.[1]) throw new Error('Font URL not found')
-    fontUrlCache.set(cacheKey, match[1])
-    return match[1]
-  } finally {
-    clearTimeout(timeout)
-  }
-}
-
-async function registerGoogleFont(Font: { register: (options: { family: string; src: string }) => void }, family: string): Promise<string> {
+async function registerLocalFont(
+  Font: { register: (options: { family: string; src: string; fontWeight?: number | 'normal' | 'bold' | 'thin' | 'ultralight' | 'light' | 'medium' | 'semibold' | 'ultrabold' | 'heavy' }) => void },
+  family: string,
+): Promise<string> {
   if (registeredFonts.has(family)) return family
+
+  const paths = LOCAL_FONT_MAP[family]
+  if (!paths) {
+    console.warn(`[export] no local font for "${family}", falling back to Helvetica`)
+    return 'Helvetica'
+  }
+
   try {
-    const fontUrl = await getGoogleFontUrl(family)
-    Font.register({ family, src: fontUrl })
+    const { existsSync } = await import('fs')
+    const { resolve } = await import('path')
+    const regularPath = resolve(process.cwd(), paths.regular)
+    const boldPath    = resolve(process.cwd(), paths.bold)
+
+    if (!existsSync(regularPath)) throw new Error(`Font file not found: ${regularPath}`)
+
+    Font.register({ family, src: regularPath, fontWeight: 'normal' })
+    if (existsSync(boldPath)) {
+      Font.register({ family, src: boldPath, fontWeight: 'bold' })
+    }
+
     registeredFonts.add(family)
     return family
   } catch (error) {
-    console.warn(`[export] unable to load font "${family}", using Helvetica`, error)
+    console.warn(`[export] failed to load local font "${family}":`, error)
     return 'Helvetica'
   }
 }
@@ -191,7 +201,7 @@ async function generatePDF(title: string, content: string, requestedTemplate: Ex
 
   const template = resolveTemplate(requestedTemplate, title, content)
   const requestedFamily = resolveFont(requestedFont, template)
-  const fontFamily = await registerGoogleFont(Font, requestedFamily)
+  const fontFamily = await registerLocalFont(Font, requestedFamily)
   const fontBoldFamily = fontFamily === 'Helvetica' ? 'Helvetica-Bold' : fontFamily
   const styles = StyleSheet.create({
     page: {
