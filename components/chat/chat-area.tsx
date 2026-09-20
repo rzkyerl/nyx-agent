@@ -177,7 +177,7 @@ function getGreeting(): string {
 
 function EmptyState({ onSuggestionClick }: { onSuggestionClick: (p: string) => void }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-6 px-6 py-16 pt-24 text-center md:pt-16">
+    <div className="flex min-h-full flex-1 flex-col items-center justify-center gap-6 px-6 pb-56 pt-16 text-center md:min-h-0 md:py-16">
       <div className="flex items-center justify-center">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
@@ -185,7 +185,7 @@ function EmptyState({ onSuggestionClick }: { onSuggestionClick: (p: string) => v
           alt="Nyx Agent"
           width={140}
           height={140}
-          className="h-80 w-80 object-contain"
+          className="h-64 w-64 object-contain sm:h-80 sm:w-80"
         />
       </div>
       <div>
