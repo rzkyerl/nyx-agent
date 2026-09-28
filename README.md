@@ -28,6 +28,7 @@ Built by [CTRL Build](https://github.com/rzkyerl).
 - **Custom providers** add any OpenAI-compatible endpoint (e.g. LM Studio, vLLM, OpenRouter) with your own base URL and API key; validated and stored locally
 - **Streaming chat** with full Markdown rendering (GFM tables, code blocks with syntax highlighting via react-shiki)
 - **Web search** automatically detects queries needing real-time information and fetches results via LangSearch or Serper; citations shown inline as numbered sources
+- **Structured web extraction** opens public URLs with Playwright and extracts requested data as JSON using the selected NIM, Groq, Gemini, or custom provider
 - **File uploads** read and analyze PDFs, Word documents, Excel spreadsheets, PowerPoint files, images, and plain text directly in chat
 - **Document generation** generate and download PDF, Word (.docx), or Excel (.xlsx) files from any assistant response
 - **Skills** inject custom instructions into the system prompt using Markdown files with YAML frontmatter; triggered by keyword matching or slash commands
@@ -56,7 +57,7 @@ Built by [CTRL Build](https://github.com/rzkyerl).
 
 | Provider | Models | Required env var |
 |---|---|---|
-| **NVIDIA NIM** | GPT OSS 20B, DeepSeek V4 Pro, DeepSeek V4 Flash, Kimi K3, Nemotron 3 Ultra | `NVIDIA_NIM_API_KEY` |
+| **NVIDIA NIM** | GPT OSS 20B, DeepSeek V4 Pro, DeepSeek V4 Flash, Kimi K3, Nemotron 3 Ultra, GLM 5.3 | `NVIDIA_NIM_API_KEY` |
 | **Groq** | Compound, GPT OSS 120B, Qwen 3.6-27B, Compound Mini | `GROQ_API_KEY` |
 | **Google Gemini** | Gemini 3.1 Pro, Gemini 3.6 Flash, Gemini 3.5 Flash Lite | `GOOGLE_GEMINI_API_KEY` |
 | **Ollama** | Llama 3.1 8B, Qwen 2.5 7B *(experimental)* | `OLLAMA_BASE_URL` |
@@ -151,6 +152,7 @@ Open [http://localhost:3000](http://localhost:3000).
 |---|---|
 | `POST /api/chat` | Main streaming endpoint. Handles web search, model selection, provider fallback, and SSE streaming. |
 | `POST /api/search` | Executes a web search via LangSearch or Serper. |
+| `POST /api/scrape` | Renders a public URL and extracts structured data through the selected provider. |
 | `POST /api/title` | Generates a session title from the first exchange. |
 | `POST /api/memory` | Updates the user's persistent memory string based on the latest exchange. |
 | `POST /api/export` | Generates a downloadable PDF, DOCX, or XLSX from given content. |
@@ -162,10 +164,20 @@ Open [http://localhost:3000](http://localhost:3000).
 When `auto` model is selected, the system attempts providers in this order, skipping any without a configured API key:
 
 ```
-NIM:    GPT OSS 20B -> Kimi K3 -> Nemotron Ultra -> DeepSeek V4 Flash -> DeepSeek V4 Pro
+NIM:    GPT OSS 20B -> Kimi K3 -> Nemotron Ultra -> GLM 5.3 -> DeepSeek V4 Flash -> DeepSeek V4 Pro
 Groq:   Compound -> GPT OSS 120B -> Qwen 3.6-27B -> Compound Mini
 Gemini: Gemini 3.6 Flash -> Gemini 3.5 Flash Lite -> Gemini 3.1 Pro
 ```
+
+### Structured Web Extraction
+
+Include a public URL and an extraction request in the chat, for example:
+
+```text
+Ekstrak nama produk, harga, rating, dan URL dari halaman ini: https://example.com/products
+```
+
+Nyx Agent uses Playwright and `llm-scraper` to render and preprocess the page, then sends the page content to the selected provider. This works with NVIDIA NIM, Groq, Gemini, and server-side custom OpenAI-compatible providers. Local and private-network URLs are blocked.
 
 ### Custom Providers
 
@@ -200,6 +212,7 @@ Supported fonts: Inter, Lora, Playfair Display, Merriweather, Roboto, Open Sans,
 | `app/api/models/health/route.ts` | Model health-check endpoint |
 | `app/api/providers/validate/route.ts` | Custom provider validation endpoint |
 | `lib/models.ts` | Model definitions and provider configuration |
+| `lib/web-scraper.ts` | Playwright rendering, llm-scraper preprocessing, URL validation, and structured extraction |
 | `lib/system-prompt.ts` | System prompt builder per model/provider |
 | `lib/storage.ts` | Session and settings persistence (localStorage) |
 | `lib/skills.ts` | Skill loading, parsing, and keyword-match activation |

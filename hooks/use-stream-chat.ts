@@ -26,6 +26,57 @@ function clientDetectSearchNeed(text: string): string | null {
   return null
 }
 
+function clientDetectScrapeUrl(text: string): string | null {
+  const match = text.match(/https?:\/\/[^\s<>()"']+/i)?.[0]?.replace(/[.,!?;:]+$/, '')
+  if (!match) return null
+
+  const withoutUrl = text
+    .replace(/https?:\/\/[^\s<>()"']+/gi, ' ')
+    .replace(/[.,!?;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  if (!withoutUrl) return null
+
+  const bareUrl = withoutUrl.split(/\s+/).filter(Boolean).length <= 2
+  const hasIntent = /\b(scrape|scraping|extract|extraction|structured data|table|product|price|rating|catalog|listing|ambil data|ekstrak|ekstraksi|tabel|produk|harga|rating|daftar|data dari|ringkas|review|analyze|analisa|jelaskan|explain|what is|apa itu|apa ini|ini apa|itu apa|this project|this repo|this site|project|repository|repo|website|site|page)\b/i.test(withoutUrl)
+
+  if (bareUrl && !hasIntent) return null
+  return match
+}
+
+function clientDetectScrapeFollowUp(text: string): boolean {
+  if (!text.trim() || /https?:\/\/[^\s<>()"']+/i.test(text)) return false
+  return /\b(scrape|scraping|extract|extraction|structured data|table|product|price|rating|catalog|listing|ambil data|ekstrak|ekstraksi|tabel|produk|harga|rating|daftar|ringkas|review|analyze|analisa|jelaskan|explain|what is|apa itu|apa ini|ini apa|itu apa|project|repository|repo|website|site|page|lanjut|ya|iya|yes|please|tolong)\b/i.test(text)
+}
+
+function clientIsBareUrlMessage(text: string): boolean {
+  const url = text.match(/https?:\/\/[^\s<>()"']+/i)
+  if (!url) return false
+  const withoutUrl = text
+    .replace(/https?:\/\/[^\s<>()"']+/gi, ' ')
+    .replace(/[.,!?;:]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!withoutUrl) return true
+  const hasIntent = /\b(scrape|scraping|extract|extraction|summarize|summarise|ringkas|review|analyze|analisis|jelaskan|explain|what is|apa itu|apa ini|project|repository|repo|website|site|page|dokumen|document|ini apa|itu apa|what does|what is this|who is|this site|this project|this repo|apakah ini)\b/i.test(withoutUrl)
+  return withoutUrl.split(/\s+/).length <= 2 && !hasIntent
+}
+
+function clientLatestUrl(messages: Array<{ role: string; content: unknown }>): string | null {
+  for (const message of [...messages].reverse()) {
+    if (message.role !== 'user') continue
+    const content = typeof message.content === 'string'
+      ? message.content
+      : Array.isArray(message.content)
+        ? (message.content as Array<{ type?: string; text?: string }>).map(part => part.text || '').join(' ')
+        : ''
+    const url = content.match(/https?:\/\/[^\s<>()"']+/i)?.[0]?.replace(/[.,!?;:]+$/, '')
+    if (url) return url
+  }
+  return null
+}
+
 interface ClientSearchResult {
   title: string
   url: string
@@ -101,6 +152,7 @@ export async function streamChatCompletion(params: StreamChatParams): Promise<st
   // ── Client-side web search for direct connection mode ──────────────────────
   let directSearchResults: ClientSearchResult[] = []
   let directSearchQuery: string | null = null
+  let directScrapeContext = ''
 
   if (directConnection) {
     const lastUserText = (() => {
@@ -117,6 +169,34 @@ export async function streamChatCompletion(params: StreamChatParams): Promise<st
       }
       return ''
     })()
+
+    if (clientIsBareUrlMessage(lastUserText)) {
+      const clarification = 'Saya menemukan sebuah link. Anda ingin saya meringkasnya, mengekstrak datanya, atau menjelaskan isi project/website tersebut?'
+      onToken(clarification)
+      return clarification
+    }
+
+    const scrapeUrl = clientDetectScrapeUrl(lastUserText) || (
+      clientDetectScrapeFollowUp(lastUserText) ? clientLatestUrl(messages) : null
+    )
+    if (scrapeUrl) {
+      onSearchStart?.(`Extracting ${scrapeUrl}`)
+      try {
+        const scrapeResponse = await fetch('/api/scrape', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: scrapeUrl, instruction: lastUserText, model, customProviders }),
+          signal,
+        })
+        const scrapeData = await scrapeResponse.json().catch(() => ({})) as { data?: unknown; url?: string; error?: string }
+        if (!scrapeResponse.ok) throw new Error(scrapeData.error || 'Web extraction failed.')
+        directScrapeContext = `[Structured Web Extraction]\nURL: ${scrapeData.url || scrapeUrl}\nData:\n${JSON.stringify(scrapeData.data, null, 2)}\n[End Structured Web Extraction]`
+        onSearchDone?.(1)
+      } catch (error) {
+        onSearchDone?.(0)
+        throw error
+      }
+    }
 
     const searchQuery = webSearch
       ? lastUserText.slice(0, 200)
@@ -152,7 +232,7 @@ export async function streamChatCompletion(params: StreamChatParams): Promise<st
     const systemWithSearch = directSearchQuery && directSearchResults.length > 0
       ? systemContent + '\n\n' + clientFormatSearchContext(directSearchQuery, directSearchResults)
       : systemContent
-    requestMessages = [{ role: 'system', content: systemWithSearch }, ...messages]
+    requestMessages = [{ role: 'system', content: systemWithSearch + (directScrapeContext ? `\n\n${directScrapeContext}` : '') }, ...messages]
   } else {
     requestMessages = messages
   }
@@ -212,8 +292,17 @@ export async function streamChatCompletion(params: StreamChatParams): Promise<st
       try {
         const json = JSON.parse(data)
 
+        if (json.type === 'clarify_url' && json.message) {
+          const clarifyText = String(json.message)
+          fullText += clarifyText
+          onToken(clarifyText)
+          continue
+        }
         if (json.type === 'searching' && json.query) { onSearchStart?.(json.query); continue }
+        if (json.type === 'scraping' && json.url) { onSearchStart?.(`Extracting ${json.url}`); continue }
         if (json.type === 'search_done')              { onSearchDone?.(json.resultsCount || 0); continue }
+        if (json.type === 'scrape_done')              { onSearchDone?.(1); continue }
+        if (json.type === 'scrape_error')             { onSearchDone?.(0); continue }
         if (json.type === 'sources' && Array.isArray(json.sources)) {
           const enriched: SourceItem[] = json.sources.map((s: { index: number; title: string; url: string; domain?: string }) => {
             const url = s.url || ''

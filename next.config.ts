@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ['100.120.144.74'],
 
   // Externalize server-only packages from client bundle
-  serverExternalPackages: ['langfuse', 'mammoth'],
+  serverExternalPackages: ['langfuse', 'mammoth', 'llm-scraper', 'playwright'],
 
   // Turbopack config (Next.js 16 default bundler)
   turbopack: {

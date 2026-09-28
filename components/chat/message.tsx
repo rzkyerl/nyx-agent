@@ -301,7 +301,7 @@ export function Message({
                 </div>
               </div>
             ) : (
-              <span className="whitespace-pre-wrap">{message.content}</span>
+              <span className="whitespace-pre-wrap"><UserMessageContent text={message.content} /></span>
             )}
           </div>
         )}
@@ -471,6 +471,35 @@ export function Message({
       </div>
     </div>
   )
+}
+
+// ── User message content with clickable URLs ──────
+function UserMessageContent({ text }: { text: string }) {
+  const URL_RE = /https?:\/\/[^\s<>()"']+/g
+  const parts: React.ReactNode[] = []
+  let last = 0
+  let match: RegExpExecArray | null
+
+  while ((match = URL_RE.exec(text)) !== null) {
+    const url = match[0].replace(/[.,!?;:]+$/, '')
+    if (match.index > last) parts.push(text.slice(last, match.index))
+    parts.push(
+      <a
+        key={match.index}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue-500 underline underline-offset-2 hover:text-blue-400 break-all"
+        onClick={e => e.stopPropagation()}
+      >
+        {url}
+      </a>
+    )
+    last = match.index + url.length
+  }
+
+  if (last < text.length) parts.push(text.slice(last))
+  return <>{parts}</>
 }
 
 function DocumentSelect({

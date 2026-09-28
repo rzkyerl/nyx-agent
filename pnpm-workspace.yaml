@@ -4,3 +4,6 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
   msw: false
+
+patchedDependencies:
+  llm-scraper: patches/llm-scraper.patch

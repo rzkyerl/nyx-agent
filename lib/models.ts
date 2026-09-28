@@ -57,6 +57,13 @@ export const NIM_MODELS: NyxModel[] = [
     description: 'Most capable model for difficult tasks',
     tags:        ['Powerful'],
   },
+  {
+    id:          'z-ai/glm-5-3',
+    label:       'GLM 5.3',
+    vendor:      'NIM',
+    description: 'Advanced multilingual model for reasoning and conversation',
+    tags:        ['Reasoning', 'Multilingual'],
+  },
   // --- Groq models (100% free, fast LPU inference) ---
   {
     id:          'groq/groq/compound',

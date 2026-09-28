@@ -19,6 +19,8 @@
 import { NextRequest } from 'next/server'
 import { buildSystemPrompt, buildOllamaSystemPrompt } from '@/lib/system-prompt'
 import { executeSearch, formatSearchContext } from '@/app/api/search/route'
+import { detectScrapeFollowUp, detectScrapeRequest, extractWebUrls, isBareUrlMessage, scrapeWebPage } from '@/lib/web-scraper'
+import type { CustomProvider } from '@/lib/storage'
 import {
   createChatTrace,
   createSearchSpan,
@@ -44,6 +46,7 @@ const AUTO_FALLBACK_ORDER = [
   { model: 'openai/gpt-oss-20b',                 provider: 'nim'    },
   { model: 'moonshotai/kimi-k3',                 provider: 'nim'    },
   { model: 'nvidia/nemotron-3-ultra-550b-a55b',  provider: 'nim'    },
+  { model: 'z-ai/glm-5-3',                       provider: 'nim'    },
   { model: 'deepseek-ai/deepseek-v4-flash-0731', provider: 'nim'    },
   { model: 'deepseek-ai/deepseek-v4-pro-0813',   provider: 'nim'    },
   { model: 'groq/compound',                       provider: 'groq'   },
@@ -91,7 +94,6 @@ function getProviderUrl(provider: string): string | null {
 // ── Message types ──────────────────────────────────
 
 type ApiMessage = { role: string; content: unknown; tool_calls?: unknown[] }
-type CustomProvider = { id: string; name: string; baseUrl: string; apiKey: string; directConnection?: boolean }
 
 function extractText(content: unknown): string {
   if (typeof content === 'string') return content
@@ -270,7 +272,7 @@ function parseAccumulatedSSE(accumulated: string, provider: string): ParsedStrea
 
 // ── Main handler ───────────────────────────────────
 
-export const maxDuration = 60
+export const maxDuration = 120
 
 export async function POST(req: NextRequest) {
   const nimKey    = process.env.NVIDIA_NIM_API_KEY    || ''
@@ -366,6 +368,8 @@ export async function POST(req: NextRequest) {
   let didSearch     = false
   let searchQuery: string | null = null
   let searchResult: { results: unknown[]; provider: string } | null = null
+  let scrapeContext: string | null = null
+  let scrapeFailureContext: string | null = null
 
   const hasSystem = messages.some(m => m.role === 'system')
   const skillContext = skills
@@ -373,6 +377,11 @@ export async function POST(req: NextRequest) {
     .slice(0, 10)
     .map(skill => `\n\n[Installed Skill: ${skill.name}]\n${skill.content}\n[End Skill: ${skill.name}]`)
     .join('')
+  const scrapeWithoutExportRequest = scrapeContext === null && lastUserText && (detectScrapeRequest(lastUserText) || detectScrapeFollowUp(lastUserText)) &&
+    !/\b(create|generate|make|build|buat|bikin|generate|create|download|pdf|docx|word|excel|spreadsheet|dokumen|laporan)\b/i.test(lastUserText)
+  const scrapeSafetyContext = scrapeWithoutExportRequest
+    ? '\n\n[Scrape behavior] This is a normal webpage analysis request. Do not generate an export-config block or create a PDF/DOCX/XLSX unless the user explicitly asks for a downloadable file.'
+    : ''
 
   // ── Build the streaming response ──
   const encoder = new TextEncoder()
@@ -397,6 +406,66 @@ export async function POST(req: NextRequest) {
 
   // ── Async main logic ──
   ;(async () => {
+    const previousUrl = [...messages]
+      .slice(0, -1)
+      .reverse()
+      .filter(message => message.role === 'user')
+      .map(message => extractWebUrls(extractText(message.content))[0])
+      .find(Boolean)
+    const scrapeUrl = extractWebUrls(lastUserText)[0] || previousUrl
+    const hasScrapeIntent = detectScrapeRequest(lastUserText) || detectScrapeFollowUp(lastUserText)
+
+    // If the user sends a URL without any action intent, ask what they want to do with it.
+    if (stream && lastUserText && isBareUrlMessage(lastUserText)) {
+      write(sseEvent({
+        type: 'clarify_url',
+        message: 'I found a link. What would you like me to do with it—summarize it, extract data, or explain what the site/project is?',
+      }))
+      await flushLangfuse()
+      close()
+      return
+    }
+
+    // Extract structured data from an explicitly supplied public URL.
+    if (stream && lastUserText && scrapeUrl && hasScrapeIntent) {
+      const selectedCandidate = model === 'auto'
+        ? [...AUTO_FALLBACK_ORDER].sort((left, right) => {
+            const priority = { groq: 0, gemini: 1, nim: 2 }
+            return priority[left.provider as keyof typeof priority] - priority[right.provider as keyof typeof priority]
+          }).find(candidate => (
+            (candidate.provider === 'nim' && nimKey) ||
+            (candidate.provider === 'groq' && groqKey) ||
+            (candidate.provider === 'gemini' && geminiKey)
+          ))
+        : null
+      const scrapeModel = selectedCandidate
+        ? selectedCandidate.provider === 'nim'
+          ? selectedCandidate.model
+          : `${selectedCandidate.provider}/${selectedCandidate.model.replace(/^(groq|gemini)\//, '')}`
+        : model
+
+      write(sseEvent({ type: 'scraping', url: scrapeUrl }))
+      try {
+        if (!scrapeModel) throw new Error('No provider is available for web extraction.')
+        const scraped = await scrapeWebPage({
+          url: scrapeUrl,
+          instruction: lastUserText,
+          model: scrapeModel,
+          nimKey,
+          groqKey,
+          geminiKey,
+          customProviders,
+        })
+        scrapeContext = `[Structured Web Extraction]\nURL: ${scraped.url}\nProvider: ${scraped.provider}\nModel: ${scraped.model}\nData:\n${JSON.stringify(scraped.data, null, 2)}\n[End Structured Web Extraction]`
+        write(sseEvent({ type: 'scrape_done', url: scraped.url }))
+      } catch (error) {
+        const message = (error as Error).message || 'Web extraction failed.'
+        scrapeFailureContext = `[Web Extraction Failed]\nThe requested page could not be extracted: ${message}\nDo not claim to have inspected the page. Explain the failure briefly and ask the user to retry or provide the page content.\n[End Web Extraction Failure]`
+        write(sseEvent({ type: 'scrape_error', message }))
+        console.warn(`[chat] Web extraction failed (model=${scrapeModel}):`, message)
+      }
+    }
+
     // Pre-search phase
     if (hasSearch && stream && lastUserText && (!lastUserHasFile || webSearch)) {
       const fallbackQuery = webSearch ? lastUserText.slice(0, 200) : detectSearchNeed(lastUserText)
@@ -448,16 +517,38 @@ export async function POST(req: NextRequest) {
         if (didSearch && searchResult) {
           const searchContext = formatSearchContext(searchQuery!, searchResult.results as Parameters<typeof formatSearchContext>[1])
           messagesForAttempt = [
-            { ...sysPrompt, content: sysPrompt.content + skillContext + '\n\n' + searchContext },
+            { ...sysPrompt, content: sysPrompt.content + skillContext + scrapeSafetyContext + (scrapeContext ? `\n\n${scrapeContext}` : '') + (scrapeFailureContext ? `\n\n${scrapeFailureContext}` : '') + '\n\n' + searchContext },
             ...messages,
           ]
         } else {
-          messagesForAttempt = [{ ...sysPrompt, content: sysPrompt.content + skillContext }, ...messages]
+          messagesForAttempt = [{ ...sysPrompt, content: sysPrompt.content + skillContext + scrapeSafetyContext + (scrapeContext ? `\n\n${scrapeContext}` : '') + (scrapeFailureContext ? `\n\n${scrapeFailureContext}` : '') }, ...messages]
         }
       } else {
         messagesForAttempt = didSearch && searchResult
           ? buildFallbackSearchMessages(messages, searchQuery!, searchResult.results as Parameters<typeof formatSearchContext>[1])
           : messages
+        if (scrapeContext) {
+          const scrapeSystemIndex = messagesForAttempt.findIndex(message => message.role === 'system')
+          if (scrapeSystemIndex >= 0) {
+            messagesForAttempt = messagesForAttempt.map((message, index) => index === scrapeSystemIndex
+              ? { ...message, content: extractText(message.content) + '\n\n' + scrapeContext }
+              : message
+            )
+          } else {
+            messagesForAttempt = [{ role: 'system', content: scrapeContext }, ...messagesForAttempt]
+          }
+        }
+        if (scrapeFailureContext) {
+          const failureSystemIndex = messagesForAttempt.findIndex(message => message.role === 'system')
+          if (failureSystemIndex >= 0) {
+            messagesForAttempt = messagesForAttempt.map((message, index) => index === failureSystemIndex
+              ? { ...message, content: extractText(message.content) + scrapeSafetyContext + `\n\n${scrapeFailureContext}` }
+              : message
+            )
+          } else {
+            messagesForAttempt = [{ role: 'system', content: scrapeSafetyContext + scrapeFailureContext }, ...messagesForAttempt]
+          }
+        }
         if (skillContext) {
           const skillSystemIndex = messagesForAttempt.findIndex(message => message.role === 'system')
           if (skillSystemIndex >= 0) {
@@ -496,7 +587,7 @@ export async function POST(req: NextRequest) {
           })
         : null
 
-      const connectTimeout = provider === 'ollama' ? 90_000 : 6_000
+      const connectTimeout = provider === 'ollama' ? 90_000 : provider.startsWith('custom:') ? 30_000 : 6_000
       const abortCtrl      = new AbortController()
       const timeoutId      = setTimeout(() => abortCtrl.abort(), connectTimeout)
 
@@ -522,8 +613,10 @@ export async function POST(req: NextRequest) {
         if (!apiResp.ok) {
           const errText = await apiResp.text().catch(() => `HTTP ${apiResp.status}`)
           if (generation) endGenerationError(generation, `api error ${apiResp.status}: ${errText.slice(0, 200)}`)
+          console.warn(`[chat] provider=${provider} status=${apiResp.status} body=${errText.slice(0, 300)}`)
           if (!isLast) continue
-          write(sseEvent({ type: 'error', message: "The AI couldn't generate a reply. Please try again." }))
+          const errDetail = errText.slice(0, 200).trim()
+          write(sseEvent({ type: 'error', message: `Provider error ${apiResp.status}${errDetail ? ': ' + errDetail : ''}` }))
           await flushLangfuse()
           close()
           return
@@ -538,7 +631,7 @@ export async function POST(req: NextRequest) {
         let accumulated  = ''
 
         while (true) {
-          const streamTimer = setTimeout(() => abortCtrl.abort(), 6_000)
+          const streamTimer = setTimeout(() => abortCtrl.abort(), provider.startsWith('custom:') ? 30_000 : 6_000)
           let chunk: ReadableStreamReadResult<Uint8Array>
           try {
             chunk = await reader.read()

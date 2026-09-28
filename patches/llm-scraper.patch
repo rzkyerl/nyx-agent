@@ -1,0 +1,12 @@
+diff --git a/tsconfig.json b/tsconfig.json
+index 9f711e7471c0b8630cbe6e22f3a0e34d284321fd..7fb2d4fbe5f5c5746b230a53ae6d705f9fd1de2d 100644
+--- a/tsconfig.json
++++ b/tsconfig.json
+@@ -1,6 +1,7 @@
+ {
+   "compilerOptions": {
+     "outDir": "dist",
++    "rootDir": "./src",
+     "declaration": true,
+     "lib": ["ESNext", "DOM"],
+     "module": "NodeNext",

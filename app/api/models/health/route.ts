@@ -83,9 +83,16 @@ async function checkModel(id: string, customProviders: NonNullable<HealthRequest
             temperature: 0,
             stream: false,
           }),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(customProvider ? 15000 : 5000),
     })
-    if (!response.ok) return { id, status: 'unavailable', latencyMs: Date.now() - started, message: `Provider returned ${response.status}` }
+    // 400/422/404 = provider reachable but rejected the minimal ping payload — still mark ready
+    if (!response.ok) {
+      if (customProvider && (response.status === 400 || response.status === 404 || response.status === 422)) {
+        return { id, status: 'ready', latencyMs: Date.now() - started, message: 'Provider reachable (ping rejected)' }
+      }
+      const detail = await response.text().catch(() => '')
+      return { id, status: 'unavailable', latencyMs: Date.now() - started, message: `Provider returned ${response.status}${detail ? ': ' + detail.slice(0, 120) : ''}` }
+    }
     return { id, status: 'ready', latencyMs: Date.now() - started }
   } catch (error) {
     return { id, status: 'unavailable', latencyMs: Date.now() - started, message: (error as Error).name === 'TimeoutError' ? 'Request timed out' : 'Provider is unreachable' }
