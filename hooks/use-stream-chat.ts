@@ -260,7 +260,7 @@ export async function streamChatCompletion(params: StreamChatParams): Promise<st
 
   if (!response.ok) {
     const text = await response.text().catch(() => '')
-    let friendlyMsg = "Couldn't get a response. Please try again."
+    let friendlyMsg = `Chat API returned HTTP ${response.status}. Check production server logs.`
     try {
       const parsed = JSON.parse(text)
       if (parsed?.error && !parsed.error.includes('://') && parsed.error.length < 120) {

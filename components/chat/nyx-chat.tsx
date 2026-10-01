@@ -298,7 +298,7 @@ export function NyxChat() {
     } catch (err) {
       if ((err as Error).name !== 'AbortError') {
         const raw = (err as Error).message || ''
-        const friendly = raw.includes('fetch') || raw.includes('network') || raw.includes('500')
+        const friendly = raw.includes('fetch') || raw.includes('network')
           ? "Couldn't reach the model. Try again or switch to a different model."
           : raw.length > 0 && raw.length < 120 && !raw.includes('://') && !raw.includes('{')
             ? raw : 'Something went wrong. Please try again.'
