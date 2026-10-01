@@ -56,6 +56,7 @@ export interface ChatMessage {
   files?: ChatFile[]
   sources?: SourceItem[]
   failed?: boolean
+  errorMessage?: string
 }
 
 export interface SourceItem {

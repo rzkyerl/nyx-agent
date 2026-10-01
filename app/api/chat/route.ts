@@ -309,7 +309,7 @@ export async function POST(req: NextRequest) {
     memory = '',
   } = body
 
-  if (!nimKey && !groqKey && !geminiKey && customProviders.length === 0) {
+  if (!nimKey && !groqKey && !geminiKey && !OLLAMA_URL && customProviders.length === 0) {
     return Response.json({ error: 'No API keys or custom providers configured.' }, { status: 500 })
   }
 
@@ -320,7 +320,16 @@ export async function POST(req: NextRequest) {
   // ── Determine models to try ──
   const isAuto = model === 'auto'
   let modelsToTry = isAuto
-    ? [...AUTO_FALLBACK_ORDER]
+    ? [
+        ...AUTO_FALLBACK_ORDER,
+        ...(OLLAMA_URL ? [
+          { model: 'llama3.1:8b', provider: 'ollama' },
+          { model: 'qwen2.5:7b', provider: 'ollama' },
+        ] : []),
+        ...customProviders
+          .filter(provider => !provider.directConnection)
+          .flatMap(provider => provider.models.map(model => ({ model: model.id, provider: `custom:${provider.id}` }))),
+      ]
     : [detectProvider(model)]
 
   modelsToTry = modelsToTry.filter(m => {

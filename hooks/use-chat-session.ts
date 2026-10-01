@@ -138,7 +138,7 @@ export function useChatSession() {
     sessionId: string,
     msgId: string,
     content: string | null,
-    meta: Partial<Pick<ChatMessage, 'sources' | 'failed'>> = {}
+    meta: Partial<Pick<ChatMessage, 'sources' | 'failed' | 'errorMessage'>> = {}
   ) => {
     setSessions(prev =>
       prev.map(s => {

@@ -303,7 +303,7 @@ export function NyxChat() {
           : raw.length > 0 && raw.length < 120 && !raw.includes('://') && !raw.includes('{')
             ? raw : 'Something went wrong. Please try again.'
         setModelUnavailable(friendly)
-        if (accumulated === '') updateMessage(sessionId!, aiMsg.id, null, { failed: true })
+        if (accumulated === '') updateMessage(sessionId!, aiMsg.id, null, { failed: true, errorMessage: friendly })
       }
     } finally {
       setIsGenerating(false); setIsSearching(false); setSearchDone(false); setActiveSkillNames([])
