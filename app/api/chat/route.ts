@@ -19,7 +19,7 @@
 import { NextRequest } from 'next/server'
 import { buildSystemPrompt, buildOllamaSystemPrompt } from '@/lib/system-prompt'
 import { executeSearch, formatSearchContext } from '@/app/api/search/route'
-import { detectScrapeFollowUp, detectScrapeRequest, extractWebUrls, isBareUrlMessage, scrapeWebPage } from '@/lib/web-scraper'
+import { detectScrapeFollowUp, detectScrapeRequest, extractWebUrls, isBareUrlMessage } from '@/lib/web-scraper-intent'
 import type { CustomProvider } from '@/lib/storage'
 import {
   createChatTrace,
@@ -456,6 +456,7 @@ export async function POST(req: NextRequest) {
       write(sseEvent({ type: 'scraping', url: scrapeUrl }))
       try {
         if (!scrapeModel) throw new Error('No provider is available for web extraction.')
+        const { scrapeWebPage } = await import('@/lib/web-scraper')
         const scraped = await scrapeWebPage({
           url: scrapeUrl,
           instruction: lastUserText,
